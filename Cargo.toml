@@ -1,0 +1,30 @@
+[package]
+name = "hashslab"
+version = "0.1.0"
+edition = "2021"
+documentation = "https://docs.rs/hashslab/"
+repository = "https://github.com/pepyaka/hashslab"
+license = "Apache-2.0 OR MIT"
+description = "A hash table with data accessible by index."
+keywords = ["hashmap", "no_std"]
+categories = ["data-structures"]
+
+[[bench]]
+name = "indexmap"
+harness = false
+
+[dependencies]
+slab = "0.4.9"
+hashbrown = "0.15.1"
+thiserror = "2.0.3"
+
+[dev-dependencies]
+itertools = "0.13"
+rand = { version = "0.8", features = ["small_rng"] }
+quickcheck = { version = "1.0", default-features = false }
+fnv = "1.0"
+lazy_static = "1.3"
+fxhash = "0.2.1"
+serde_derive = "1.0"
+indexmap = "2.6.0"
+criterion = { version = "0.5" }
