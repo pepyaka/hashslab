@@ -1,23 +1,13 @@
-use criterion::measurement::Measurement;
-use lazy_static::lazy_static;
-
-use fnv::FnvHasher;
-use std::hash::BuildHasherDefault;
-use std::hash::Hash;
-type FnvBuilder = BuildHasherDefault<FnvHasher>;
+use std::{collections::HashMap, hash::Hash, sync::LazyLock};
 
 use criterion::{
-    black_box, criterion_group, criterion_main, BenchmarkGroup, BenchmarkId, Criterion,
+    black_box, criterion_group, criterion_main, measurement::Measurement, BenchmarkGroup,
+    BenchmarkId, Criterion,
 };
+use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
 
 use hashslab::HashSlabMap;
 use indexmap::IndexMap;
-
-use std::collections::HashMap;
-
-use rand::rngs::SmallRng;
-use rand::seq::SliceRandom;
-use rand::SeedableRng;
 
 /// Use a consistently seeded Rng for benchmark stability
 fn small_rng() -> SmallRng {
@@ -25,6 +15,9 @@ fn small_rng() -> SmallRng {
     SmallRng::seed_from_u64(seed)
 }
 
+/*
+    Init
+*/
 fn bench_new(c: &mut Criterion) {
     let mut group = c.benchmark_group("new");
     group.bench_function("hashmap", |b| b.iter(|| HashMap::<String, String>::new()));
@@ -49,48 +42,85 @@ fn bench_with_capacity(c: &mut Criterion) {
     }
 }
 
+/*
+    Grow
+*/
+// Test grow/resize without preallocation
+fn bench_grow(c: &mut Criterion) {
+    let mut group = c.benchmark_group("grow");
+    for grow_size in [1, 100, 10_000].iter() {
+        group.bench_with_input(
+            BenchmarkId::new("hashmap", grow_size),
+            grow_size,
+            |b, grow_size| {
+                b.iter(|| {
+                    let mut map = HashMap::new();
+                    for x in 0..*grow_size {
+                        map.insert(x, x);
+                    }
+                });
+            },
+        );
+        group.bench_with_input(
+            BenchmarkId::new("indexmap", grow_size),
+            grow_size,
+            |b, grow_size| {
+                b.iter(|| {
+                    let mut map = IndexMap::new();
+                    for x in 0..*grow_size {
+                        map.insert(x, x);
+                    }
+                })
+            },
+        );
+        group.bench_with_input(
+            BenchmarkId::new("hashslabmap", grow_size),
+            grow_size,
+            |b, grow_size| {
+                b.iter(|| {
+                    let mut map = HashSlabMap::new();
+                    for x in 0..*grow_size {
+                        map.insert(x, x);
+                    }
+                })
+            },
+        );
+    }
+}
+
+/*
+    Insert
+*/
 fn insert<'a, M, K, V>(group: &mut BenchmarkGroup<'a, M>, name: &str, list: Vec<(K, V)>)
 where
     M: Measurement,
     K: Hash + Eq,
 {
     let len = list.len();
-    group.bench_with_input(
-        BenchmarkId::new("hashmap", format!("{name} x {len}")),
-        &list,
-        |b, list| {
-            b.iter(|| {
-                let mut map = HashMap::with_capacity(len);
-                for (k, v) in list {
-                    map.insert(k, v);
-                }
-            })
-        },
-    );
-    group.bench_with_input(
-        BenchmarkId::new("indexmap", format!("{name} x {len}")),
-        &list,
-        |b, list| {
-            b.iter(|| {
-                let mut map = IndexMap::with_capacity(len);
-                for (k, v) in list {
-                    map.insert(k, v);
-                }
-            })
-        },
-    );
-    group.bench_with_input(
-        BenchmarkId::new("hashslabmap", format!("{name} x {len}")),
-        &list,
-        |b, list| {
-            b.iter(|| {
-                let mut map = HashSlabMap::with_capacity(len);
-                for (k, v) in list {
-                    map.insert(k, v);
-                }
-            })
-        },
-    );
+    group.bench_with_input(BenchmarkId::new("hashmap", name), &list, |b, list| {
+        b.iter(|| {
+            let mut map = HashMap::with_capacity(len);
+            for (k, v) in list {
+                map.insert(k, v);
+            }
+        })
+    });
+    group.bench_with_input(BenchmarkId::new("indexmap", name), &list, |b, list| {
+        b.iter(|| {
+            let mut map = IndexMap::with_capacity(len);
+            for (k, v) in list {
+                map.insert(k, v);
+            }
+        })
+    });
+    group.bench_with_input(BenchmarkId::new("hashslabmap", name), &list, |b, list| {
+        b.iter(|| {
+            let mut map = HashSlabMap::with_capacity(len);
+            for (k, v) in list {
+                map.insert(k, v);
+            }
+        })
+    });
 }
 
 fn bench_insert(c: &mut Criterion) {
@@ -107,6 +137,323 @@ fn bench_insert(c: &mut Criterion) {
 
     let list: Vec<(usize, [u64; 10])> = (0..10_000).map(|n| (n, Default::default())).collect();
     insert(&mut group, "bigint", list);
+}
+
+/*
+    Key lookup sequential
+*/
+const LOOKUP_SEQ_SIZE: usize = 10_000;
+
+fn bench_lookup_key_exist(c: &mut Criterion) {
+    let mut group = c.benchmark_group("lookup_key_exist");
+    group.bench_function("hashmap", |b| {
+        let mut map = HashMap::with_capacity(LOOKUP_SEQ_SIZE);
+        let keys = shuffled_keys(0..LOOKUP_SEQ_SIZE);
+        for &key in &keys {
+            map.insert(key, 1);
+        }
+        b.iter(|| {
+            for key in 5000..LOOKUP_SEQ_SIZE {
+                map.get(&key);
+            }
+        });
+    });
+    group.bench_function("indexmap", |b| {
+        let mut map = IndexMap::with_capacity(LOOKUP_SEQ_SIZE);
+        let keys = shuffled_keys(0..LOOKUP_SEQ_SIZE);
+        for &key in &keys {
+            map.insert(key, 1);
+        }
+        b.iter(|| {
+            for key in 5000..LOOKUP_SEQ_SIZE {
+                map.get(&key);
+            }
+        });
+    });
+    group.bench_function("hashslabmap", |b| {
+        let mut map = HashSlabMap::with_capacity(LOOKUP_SEQ_SIZE);
+        let keys = shuffled_keys(0..LOOKUP_SEQ_SIZE);
+        for &key in &keys {
+            map.insert(key, 1);
+        }
+        b.iter(|| {
+            for key in 5000..LOOKUP_SEQ_SIZE {
+                map.get(&key);
+            }
+        });
+    });
+}
+
+fn bench_lookup_key_noexist(c: &mut Criterion) {
+    let mut group = c.benchmark_group("lookup_key_noexist");
+    group.bench_function("hashmap", |b| {
+        let mut map = HashMap::with_capacity(LOOKUP_SEQ_SIZE);
+        let keys = shuffled_keys(0..LOOKUP_SEQ_SIZE);
+        for &key in &keys {
+            map.insert(key, 1);
+        }
+        b.iter(|| {
+            for key in LOOKUP_SEQ_SIZE..15000 {
+                map.get(&key);
+            }
+        });
+    });
+    group.bench_function("indexmap", |b| {
+        let mut map = IndexMap::with_capacity(LOOKUP_SEQ_SIZE);
+        let keys = shuffled_keys(0..LOOKUP_SEQ_SIZE);
+        for &key in &keys {
+            map.insert(key, 1);
+        }
+        b.iter(|| {
+            for key in LOOKUP_SEQ_SIZE..15000 {
+                map.get(&key);
+            }
+        });
+    });
+    group.bench_function("hashslabmap", |b| {
+        let mut map = HashSlabMap::with_capacity(LOOKUP_SEQ_SIZE);
+        let keys = shuffled_keys(0..LOOKUP_SEQ_SIZE);
+        for &key in &keys {
+            map.insert(key, 1);
+        }
+        b.iter(|| {
+            for key in LOOKUP_SEQ_SIZE..15000 {
+                map.get(&key);
+            }
+        });
+    });
+}
+
+/*
+    Key lookup random
+*/
+fn shuffled_keys<I>(iter: I) -> Vec<I::Item>
+where
+    I: IntoIterator,
+{
+    let mut v = Vec::from_iter(iter);
+    let mut rng = small_rng();
+    v.shuffle(&mut rng);
+    v
+}
+
+const LOOKUP_MAP_SIZE: u32 = 100_000_u32;
+
+static LOOKUP_SHUFFLED_KEYS: LazyLock<Vec<u32>> =
+    LazyLock::new(|| shuffled_keys(0..LOOKUP_MAP_SIZE));
+
+static LOOKUP_HASHMAP: LazyLock<HashMap<u32, u32>> = LazyLock::new(|| {
+    let mut map = HashMap::with_capacity(LOOKUP_SHUFFLED_KEYS.len());
+    let keys = &*LOOKUP_SHUFFLED_KEYS;
+    for &key in keys {
+        map.insert(key, key);
+    }
+    map
+});
+
+static LOOKUP_INDEXMAP: LazyLock<IndexMap<u32, u32>> = LazyLock::new(|| {
+    let mut map = IndexMap::with_capacity(LOOKUP_SHUFFLED_KEYS.len());
+    let keys = &*LOOKUP_SHUFFLED_KEYS;
+    for &key in keys {
+        map.insert(key, key);
+    }
+    map
+});
+
+static LOOKUP_HASHSLABMAP: LazyLock<HashSlabMap<u32, u32>> = LazyLock::new(|| {
+    let mut map = HashSlabMap::with_capacity(LOOKUP_SHUFFLED_KEYS.len());
+    let keys = &*LOOKUP_SHUFFLED_KEYS;
+    for &key in keys {
+        map.insert(key, key);
+    }
+    map
+});
+
+const LOOKUP_SAMPLE_SIZE: u32 = 5000;
+// const SORT_MAP_SIZE: usize = 10_000;
+
+fn bench_lookup_key_single(c: &mut Criterion) {
+    let mut group = c.benchmark_group("lookup_key_single");
+    group.bench_function("hashmap", |b| {
+        let map = &*LOOKUP_HASHMAP;
+        let mut iter = (0..LOOKUP_MAP_SIZE + LOOKUP_SAMPLE_SIZE).cycle();
+        b.iter(|| {
+            let key = iter.next().unwrap();
+            map.get(&key);
+        });
+    });
+    group.bench_function("indexmap", |b| {
+        let map = &*LOOKUP_INDEXMAP;
+        let mut iter = (0..LOOKUP_MAP_SIZE + LOOKUP_SAMPLE_SIZE).cycle();
+        b.iter(|| {
+            let key = iter.next().unwrap();
+            map.get(&key);
+        });
+    });
+    group.bench_function("hashslabmap", |b| {
+        let map = &*LOOKUP_HASHSLABMAP;
+        let mut iter = (0..LOOKUP_MAP_SIZE + LOOKUP_SAMPLE_SIZE).cycle();
+        b.iter(|| {
+            let key = iter.next().unwrap();
+            map.get(&key);
+        });
+    });
+}
+
+fn bench_lookup_key_few(c: &mut Criterion) {
+    let mut group = c.benchmark_group("lookup_key_few");
+    group.bench_function("hashmap", |b| {
+        let map = &*LOOKUP_HASHMAP;
+        b.iter(|| {
+            for key in 0..LOOKUP_SAMPLE_SIZE {
+                map.get(&key);
+            }
+        });
+    });
+    group.bench_function("indexmap", |b| {
+        let map = &*LOOKUP_INDEXMAP;
+        b.iter(|| {
+            for key in 0..LOOKUP_SAMPLE_SIZE {
+                map.get(&key);
+            }
+        });
+    });
+    group.bench_function("hashslabmap", |b| {
+        let map = &*LOOKUP_HASHSLABMAP;
+        b.iter(|| {
+            for key in 0..LOOKUP_SAMPLE_SIZE {
+                map.get(&key);
+            }
+        });
+    });
+}
+
+// Test looking up keys in the same order as they were inserted
+fn bench_lookup_key_few_inorder(c: &mut Criterion) {
+    let mut group = c.benchmark_group("lookup_key_few_inorder");
+    group.bench_function("hashmap", |b| {
+        let map = &*LOOKUP_HASHMAP;
+        let keys = &*LOOKUP_SHUFFLED_KEYS;
+        b.iter(|| {
+            for key in &keys[0..LOOKUP_SAMPLE_SIZE as usize] {
+                map.get(key);
+            }
+        });
+    });
+    group.bench_function("indexmap", |b| {
+        let map = &*LOOKUP_INDEXMAP;
+        let keys = &*LOOKUP_SHUFFLED_KEYS;
+        b.iter(|| {
+            for key in &keys[0..LOOKUP_SAMPLE_SIZE as usize] {
+                map.get(key);
+            }
+        });
+    });
+    group.bench_function("hashslabmap", |b| {
+        let map = &*LOOKUP_HASHSLABMAP;
+        let keys = &*LOOKUP_SHUFFLED_KEYS;
+        b.iter(|| {
+            for key in &keys[0..LOOKUP_SAMPLE_SIZE as usize] {
+                map.get(key);
+            }
+        });
+    });
+}
+
+/*
+    Index lookup
+*/
+fn bench_lookup_index_exist(c: &mut Criterion) {
+    let mut group = c.benchmark_group("lookup_index_exist");
+    group.bench_function("indexmap", |b| {
+        let map = &*LOOKUP_INDEXMAP;
+        let end = map.len();
+        let start = end / 2;
+        b.iter(|| {
+            for idx in start..end {
+                black_box(map.get_index(idx));
+            }
+        });
+    });
+    group.bench_function("hashslabmap", |b| {
+        let map = &*LOOKUP_HASHSLABMAP;
+        let end = map.len();
+        let start = end / 2;
+        b.iter(|| {
+            for idx in start..end {
+                black_box(map.get_index(idx));
+            }
+        });
+    });
+}
+
+fn bench_lookup_index_noexist(c: &mut Criterion) {
+    let mut group = c.benchmark_group("lookup_index_noexist");
+    group.bench_function("indexmap", |b| {
+        let map = &*LOOKUP_INDEXMAP;
+        let start = map.len();
+        let end = start + start / 2;
+        b.iter(|| {
+            for idx in start..end {
+                black_box(map.get_index(idx));
+            }
+        });
+    });
+    group.bench_function("hashslabmap", |b| {
+        let map = &*LOOKUP_HASHSLABMAP;
+        let start = map.len();
+        let end = start + start / 2;
+        b.iter(|| {
+            for idx in start..end {
+                black_box(map.get_index(idx));
+            }
+        });
+    });
+}
+
+fn bench_lookup_index_single(c: &mut Criterion) {
+    let mut group = c.benchmark_group("lookup_index_single");
+    group.bench_function("indexmap", |b| {
+        let map = &*LOOKUP_INDEXMAP;
+        let mut iter = (0..(2 * map.len())).cycle();
+        b.iter(|| {
+            let idx = iter.next().unwrap();
+            black_box(map.get_index(idx));
+        });
+    });
+    group.bench_function("hashslabmap", |b| {
+        let map = &*LOOKUP_HASHSLABMAP;
+        let mut iter = (0..(2 * map.len())).cycle();
+        b.iter(|| {
+            let idx = iter.next().unwrap();
+            black_box(map.get_index(idx));
+        });
+    });
+}
+
+fn bench_lookup_index_random(c: &mut Criterion) {
+    let mut group = c.benchmark_group("lookup_index_random");
+    let indices: Vec<usize> = (&*LOOKUP_SHUFFLED_KEYS)
+        .iter()
+        .map(|n| *n as usize)
+        .collect();
+
+    group.bench_function("indexmap", |b| {
+        let map = &*LOOKUP_INDEXMAP;
+        b.iter(|| {
+            for idx in &indices {
+                black_box(map.get_index(*idx));
+            }
+        });
+    });
+    group.bench_function("hashslabmap", |b| {
+        let map = &*LOOKUP_HASHSLABMAP;
+        b.iter(|| {
+            for idx in &indices {
+                black_box(map.get_index(*idx));
+            }
+        });
+    });
 }
 
 // fn entry_hashmap_150(c: &mut Criterion) {
@@ -131,380 +478,129 @@ fn bench_insert(c: &mut Criterion) {
 //     });
 // }
 
-fn hashmap_iter_sum_10_000(c: &mut Criterion) {
+/*
+    Iterators
+*/
+fn bench_iter_sum(c: &mut Criterion) {
+    let mut group = c.benchmark_group("iter_sum");
     let cap = 10_000;
-    let mut map = HashMap::with_capacity(cap);
-    let len = cap - cap / 10;
-    for x in 0..len {
-        map.insert(x, ());
-    }
-    assert_eq!(map.len(), len);
-    c.bench_function("hashmap_iter_sum_10_000", |b| {
-        b.iter(|| map.keys().sum::<usize>())
+    group.bench_function("hashmap", |b| {
+        let mut map = HashMap::with_capacity(cap);
+        for x in 0..cap {
+            map.insert(x, ());
+        }
+        b.iter(|| map.keys().sum::<usize>());
+    });
+    group.bench_function("indexmap", |b| {
+        let mut map = IndexMap::with_capacity(cap);
+        for x in 0..cap {
+            map.insert(x, ());
+        }
+        b.iter(|| map.keys().sum::<usize>());
+    });
+    group.bench_function("hashslabmap", |b| {
+        let mut map = HashSlabMap::with_capacity(cap);
+        for x in 0..cap {
+            map.insert(x, ());
+        }
+        b.iter(|| map.keys().sum::<usize>());
     });
 }
 
-fn indexmap_iter_sum_10_000(c: &mut Criterion) {
+fn bench_iter_black_box(c: &mut Criterion) {
+    let mut group = c.benchmark_group("iter_black_box");
     let cap = 10_000;
-    let mut map = IndexMap::with_capacity(cap);
-    let len = cap - cap / 10;
-    for x in 0..len {
-        map.insert(x, ());
-    }
-    assert_eq!(map.len(), len);
-    c.bench_function("indexmap_iter_sum_10_000", |b| {
-        b.iter(|| map.keys().sum::<usize>())
-    });
-}
-
-fn hashslabmap_iter_sum_10_000(c: &mut Criterion) {
-    let cap = 10_000;
-    let mut map = HashSlabMap::with_capacity(cap);
-    let len = cap - cap / 10;
-    for x in 0..len {
-        map.insert(x, ());
-    }
-    assert_eq!(map.len(), len);
-    c.bench_function("hashslabmap_iter_sum_10_000", |b| {
-        b.iter(|| map.keys().sum::<usize>())
-    });
-}
-
-fn hashmap_iter_black_box_10_000(c: &mut Criterion) {
-    let cap = 10_000;
-    let mut map = HashMap::with_capacity(cap);
-    let len = cap - cap / 10;
-    for x in 0..len {
-        map.insert(x, ());
-    }
-    assert_eq!(map.len(), len);
-    c.bench_function("hashmap_iter_black_box_10_000", |b| {
+    group.bench_function("hashmap", |b| {
+        let mut map = HashMap::with_capacity(cap);
+        for x in 0..cap {
+            map.insert(x, ());
+        }
         b.iter(|| {
             for &key in map.keys() {
                 black_box(key);
             }
-        })
+        });
     });
-}
-
-fn indexmap_iter_black_box_10_000(c: &mut Criterion) {
-    let cap = 10_000;
-    let mut map = IndexMap::with_capacity(cap);
-    let len = cap - cap / 10;
-    for x in 0..len {
-        map.insert(x, ());
-    }
-    assert_eq!(map.len(), len);
-    c.bench_function("indexmap_iter_black_box_10_000", |b| {
+    group.bench_function("indexmap", |b| {
+        let mut map = IndexMap::with_capacity(cap);
+        for x in 0..cap {
+            map.insert(x, ());
+        }
         b.iter(|| {
             for &key in map.keys() {
                 black_box(key);
             }
-        })
+        });
     });
-}
-
-fn hashslabmap_iter_black_box_10_000(c: &mut Criterion) {
-    let cap = 10_000;
-    let mut map = HashSlabMap::with_capacity(cap);
-    let len = cap - cap / 10;
-    for x in 0..len {
-        map.insert(x, ());
-    }
-    assert_eq!(map.len(), len);
-    c.bench_function("hashslabmap_iter_black_box_10_000", |b| {
+    group.bench_function("hashslabmap", |b| {
+        let mut map = HashSlabMap::with_capacity(cap);
+        for x in 0..cap {
+            map.insert(x, ());
+        }
         b.iter(|| {
             for &key in map.keys() {
                 black_box(key);
             }
-        })
+        });
     });
 }
 
-fn shuffled_keys<I>(iter: I) -> Vec<I::Item>
-where
-    I: IntoIterator,
-{
-    let mut v = Vec::from_iter(iter);
-    let mut rng = small_rng();
-    v.shuffle(&mut rng);
-    v
-}
+// // use lazy_static so that comparison benchmarks use the exact same inputs
+// lazy_static! {
+//     static ref KEYS: Vec<u32> = shuffled_keys(0..LOOKUP_MAP_SIZE);
+// }
 
-fn hashmap_lookup_10_000_exist(c: &mut Criterion) {
-    let cap = 10_000;
-    let mut map = HashMap::with_capacity(cap);
-    let keys = shuffled_keys(0..cap);
-    for &key in &keys {
-        map.insert(key, 1);
-    }
-    c.bench_function("hashmap_lookup_10_000_exist", |b| {
-        b.iter(|| {
-            let mut found = 0;
-            for key in 5000..cap {
-                found += map.get(&key).is_some() as i32;
-            }
-            found
-        })
-    });
-}
-
-fn indexmap_lookup_10_000_exist(c: &mut Criterion) {
-    let cap = 10_000;
-    let mut map = IndexMap::with_capacity(cap);
-    let keys = shuffled_keys(0..cap);
-    for &key in &keys {
-        map.insert(key, 1);
-    }
-    c.bench_function("indexmap_lookup_10_000_exist", |b| {
-        b.iter(|| {
-            let mut found = 0;
-            for key in 5000..cap {
-                found += map.get(&key).is_some() as i32;
-            }
-            found
-        })
-    });
-}
-
-fn hashslabmap_lookup_10_000_exist(c: &mut Criterion) {
-    let cap = 10_000;
-    let mut map = HashSlabMap::with_capacity(cap);
-    let keys = shuffled_keys(0..cap);
-    for &key in &keys {
-        map.insert(key, 1);
-    }
-    c.bench_function("hashslabmap_lookup_10_000_exist", |b| {
-        b.iter(|| {
-            let mut found = 0;
-            for key in 5000..cap {
-                found += map.get(&key).is_some() as i32;
-            }
-            found
-        })
-    });
-}
-
-fn hashmap_lookup_10_000_noexist(c: &mut Criterion) {
-    let cap = 10_000;
-    let mut map = HashMap::with_capacity(cap);
-    let keys = shuffled_keys(0..cap);
-    for &key in &keys {
-        map.insert(key, 1);
-    }
-    c.bench_function("hashmap_lookup_10_000_noexist", |b| {
-        b.iter(|| {
-            let mut found = 0;
-            for key in cap..15000 {
-                found += map.get(&key).is_some() as i32;
-            }
-            found
-        })
-    });
-}
-
-fn indexmap_lookup_10_000_noexist(c: &mut Criterion) {
-    let cap = 10_000;
-    let mut map = IndexMap::with_capacity(cap);
-    let keys = shuffled_keys(0..cap);
-    for &key in &keys {
-        map.insert(key, 1);
-    }
-    c.bench_function("indexmap_lookup_10_000_noexist", |b| {
-        b.iter(|| {
-            let mut found = 0;
-            for key in cap..15000 {
-                found += map.get(&key).is_some() as i32;
-            }
-            found
-        })
-    });
-}
-
-fn hashslabmap_lookup_10_000_noexist(c: &mut Criterion) {
-    let cap = 10_000;
-    let mut map = IndexMap::with_capacity(cap);
-    let keys = shuffled_keys(0..cap);
-    for &key in &keys {
-        map.insert(key, 1);
-    }
-    c.bench_function("hashslabmap_lookup_10_000_noexist", |b| {
-        b.iter(|| {
-            let mut found = 0;
-            for key in cap..15000 {
-                found += map.get(&key).is_some() as i32;
-            }
-            found
-        })
-    });
-}
-
-// number of items to look up
-const LOOKUP_MAP_SIZE: u32 = 100_000_u32;
-// const LOOKUP_SAMPLE_SIZE: u32 = 5000;
-const SORT_MAP_SIZE: usize = 10_000;
-
-// use lazy_static so that comparison benchmarks use the exact same inputs
-lazy_static! {
-    static ref KEYS: Vec<u32> = shuffled_keys(0..LOOKUP_MAP_SIZE);
-}
-
-lazy_static! {
-    static ref HMAP_100K: HashMap<u32, u32> = {
-        let mut map = HashMap::with_capacity(LOOKUP_MAP_SIZE as usize);
-        let keys = &*KEYS;
-        for &key in keys {
-            map.insert(key, key);
-        }
-        map
-    };
-}
-
-lazy_static! {
-    static ref IMAP_100K: IndexMap<u32, u32> = {
-        let mut map = IndexMap::with_capacity(LOOKUP_MAP_SIZE as usize);
-        let keys = &*KEYS;
-        for &key in keys {
-            map.insert(key, key);
-        }
-        map
-    };
-}
-
-lazy_static! {
-    static ref HSMAP_100K: HashSlabMap<u32, u32> = {
-        let mut map = HashSlabMap::with_capacity(LOOKUP_MAP_SIZE as usize);
-        let keys = &*KEYS;
-        for &key in keys {
-            map.insert(key, key);
-        }
-        map
-    };
-}
-
-lazy_static! {
-    static ref IMAP_SORT_U32: IndexMap<u32, u32> = {
-        let mut map = IndexMap::with_capacity(SORT_MAP_SIZE);
-        for &key in &KEYS[..SORT_MAP_SIZE] {
-            map.insert(key, key);
-        }
-        map
-    };
-}
-lazy_static! {
-    static ref IMAP_SORT_S: IndexMap<String, String> = {
-        let mut map = IndexMap::with_capacity(SORT_MAP_SIZE);
-        for &key in &KEYS[..SORT_MAP_SIZE] {
-            map.insert(format!("{:^16x}", &key), String::new());
-        }
-        map
-    };
-}
-
-// fn lookup_hashmap_100_000_multi(c: &mut Criterion) {
-//     let map = &*HMAP_100K;
-//     c.bench_function("lookup_hashmap_100_000_multi", |b| b.iter()|| {
-//         let mut found = 0;
-//         for key in 0..LOOKUP_SAMPLE_SIZE {
-//             found += map.get(&key).is_some() as u32;
+// lazy_static! {
+//     static ref HMAP_100K: HashMap<u32, u32> = {
+//         let mut map = HashMap::with_capacity(LOOKUP_MAP_SIZE as usize);
+//         let keys = &*KEYS;
+//         for &key in keys {
+//             map.insert(key, key);
 //         }
-//         found
-//     });
+//         map
+//     };
 // }
 
-// fn lookup_indexmap_100_000_multi(c: &mut Criterion) {
-//     let map = &*IMAP_100K;
-//     c.bench_function("lookup_indexmap_100_000_multi", |b| b.iter()|| {
-//         let mut found = 0;
-//         for key in 0..LOOKUP_SAMPLE_SIZE {
-//             found += map.get(&key).is_some() as u32;
+// lazy_static! {
+//     static ref IMAP_100K: IndexMap<u32, u32> = {
+//         let mut map = IndexMap::with_capacity(LOOKUP_MAP_SIZE as usize);
+//         let keys = &*KEYS;
+//         for &key in keys {
+//             map.insert(key, key);
 //         }
-//         found
-//     });
+//         map
+//     };
 // }
 
-// // inorder: Test looking up keys in the same order as they were inserted
-// fn lookup_hashmap_100_000_inorder_multi(c: &mut Criterion) {
-//     let map = &*HMAP_100K;
-//     let keys = &*KEYS;
-//     c.bench_function("lookup_hashmap_100_000_inorder_multi", |b| b.iter()|| {
-//         let mut found = 0;
-//         for key in &keys[0..LOOKUP_SAMPLE_SIZE as usize] {
-//             found += map.get(key).is_some() as u32;
+// lazy_static! {
+//     static ref HSMAP_100K: HashSlabMap<u32, u32> = {
+//         let mut map = HashSlabMap::with_capacity(LOOKUP_MAP_SIZE as usize);
+//         let keys = &*KEYS;
+//         for &key in keys {
+//             map.insert(key, key);
 //         }
-//         found
-//     });
+//         map
+//     };
 // }
 
-// fn lookup_indexmap_100_000_inorder_multi(c: &mut Criterion) {
-//     let map = &*IMAP_100K;
-//     let keys = &*KEYS;
-//     c.bench_function("lookup_indexmap_100_000_inorder_multi", |b| b.iter()|| {
-//         let mut found = 0;
-//         for key in &keys[0..LOOKUP_SAMPLE_SIZE as usize] {
-//             found += map.get(key).is_some() as u32;
+// lazy_static! {
+//     static ref IMAP_SORT_U32: IndexMap<u32, u32> = {
+//         let mut map = IndexMap::with_capacity(SORT_MAP_SIZE);
+//         for &key in &KEYS[..SORT_MAP_SIZE] {
+//             map.insert(key, key);
 //         }
-//         found
-//     });
+//         map
+//     };
 // }
-
-// fn lookup_hashmap_100_000_single(c: &mut Criterion) {
-//     let map = &*HMAP_100K;
-//     let mut iter = (0..LOOKUP_MAP_SIZE + LOOKUP_SAMPLE_SIZE).cycle();
-//     c.bench_function("lookup_hashmap_100_000_single", |b| b.iter()|| {
-//         let key = iter.next().unwrap();
-//         map.get(&key).is_some()
-//     });
+// lazy_static! {
+//     static ref IMAP_SORT_S: IndexMap<String, String> = {
+//         let mut map = IndexMap::with_capacity(SORT_MAP_SIZE);
+//         for &key in &KEYS[..SORT_MAP_SIZE] {
+//             map.insert(format!("{:^16x}", &key), String::new());
+//         }
+//         map
+//     };
 // }
-
-// fn lookup_indexmap_100_000_single(c: &mut Criterion) {
-//     let map = &*IMAP_100K;
-//     let mut iter = (0..LOOKUP_MAP_SIZE + LOOKUP_SAMPLE_SIZE).cycle();
-//     c.bench_function("lookup_indexmap_100_000_single", |b| b.iter()|| {
-//         let key = iter.next().unwrap();
-//         map.get(&key).is_some()
-//     });
-// }
-
-const GROW_SIZE: usize = 100_000;
-type GrowKey = u32;
-
-// Test grow/resize without preallocation
-fn hashmap_grow_fnv_100_000(c: &mut Criterion) {
-    c.bench_function("hashmap_grow_fnv_100_000", |b| {
-        b.iter(|| {
-            let mut map: HashMap<_, _, FnvBuilder> = HashMap::default();
-            for x in 0..GROW_SIZE {
-                map.insert(x as GrowKey, x as GrowKey);
-            }
-            map
-        })
-    });
-}
-
-fn indexmap_grow_fnv_100_000(c: &mut Criterion) {
-    c.bench_function("indexmap_grow_fnv_100_000", |b| {
-        b.iter(|| {
-            let mut map: IndexMap<_, _, FnvBuilder> = IndexMap::default();
-            for x in 0..GROW_SIZE {
-                map.insert(x as GrowKey, x as GrowKey);
-            }
-            map
-        })
-    });
-}
-
-fn hashslabmap_grow_fnv_100_000(c: &mut Criterion) {
-    c.bench_function("hashslabmap_grow_fnv_100_000", |b| {
-        b.iter(|| {
-            let mut map: HashSlabMap<_, _, FnvBuilder> = HashSlabMap::default();
-            for x in 0..GROW_SIZE {
-                map.insert(x as GrowKey, x as GrowKey);
-            }
-            map
-        })
-    });
-}
 
 // const MERGE: u64 = 10_000;
 // fn hashmap_merge_simple(c: &mut Criterion) {
@@ -557,98 +653,197 @@ fn hashslabmap_grow_fnv_100_000(c: &mut Criterion) {
 //     });
 // }
 
-fn indexmap_swap_remove_100_000(c: &mut Criterion) {
-    let map = IMAP_100K.clone();
-    let mut keys = Vec::from_iter(map.keys().copied());
-    let mut rng = small_rng();
-    keys.shuffle(&mut rng);
+/*
+    Remove
+*/
+fn bench_remove_key(c: &mut Criterion) {
+    let mut group = c.benchmark_group("remove_key");
 
-    c.bench_function("indexmap_swap_remove_100_000", |b| {
+    let size = 1000;
+    let vec: Vec<(u32, u32)> = (0..size).map(|x| (x, x)).collect();
+
+    group.bench_function("hashmap", |b| {
+        let map = HashMap::<u32, u32>::from_iter(vec.iter().cloned());
         b.iter(|| {
             let mut map = map.clone();
-            for key in &keys {
+            for key in 0..size {
+                map.remove(&key);
+            }
+            assert_eq!(map.len(), 0);
+        })
+    });
+    group.bench_function("indexmap.swap_remove", |b| {
+        let map = IndexMap::<u32, u32>::from_iter(vec.iter().cloned());
+        b.iter(|| {
+            let mut map = map.clone();
+            for key in 0..size {
+                map.swap_remove(&key);
+            }
+            assert_eq!(map.len(), 0);
+        })
+    });
+    group.bench_function("indexmap.shift_remove", |b| {
+        let map = IndexMap::<u32, u32>::from_iter(vec.iter().cloned());
+        b.iter(|| {
+            let mut map = map.clone();
+            for key in 0..size {
+                map.shift_remove(&key);
+            }
+            assert_eq!(map.len(), 0);
+        })
+    });
+    group.bench_function("hashslabmap", |b| {
+        let map = HashSlabMap::<u32, u32>::from_iter(vec.iter().cloned());
+        b.iter(|| {
+            let mut map = map.clone();
+            for key in 0..size {
+                map.remove(&key);
+            }
+            assert_eq!(map.len(), 0);
+        })
+    });
+}
+
+fn bench_remove_key_few(c: &mut Criterion) {
+    let mut group = c.benchmark_group("remove_key_few");
+
+    let few_len = 50;
+    let mut keys = (&*LOOKUP_SHUFFLED_KEYS).clone();
+    let mut rng = small_rng();
+    keys.shuffle(&mut rng);
+    keys.truncate(few_len);
+    let keys = &keys;
+
+    group.bench_function("hashmap", |b| {
+        let map = LOOKUP_HASHMAP.clone();
+        let removed_len = map.len() - few_len;
+        b.iter(|| {
+            let mut map = map.clone();
+            for key in keys {
+                map.remove(key);
+            }
+            assert_eq!(map.len(), removed_len);
+        })
+    });
+    group.bench_function("indexmap.swap_remove", |b| {
+        let map = LOOKUP_INDEXMAP.clone();
+        let removed_len = map.len() - few_len;
+        b.iter(|| {
+            let mut map = map.clone();
+            for key in keys {
                 map.swap_remove(key);
             }
-            assert_eq!(map.len(), 0);
-            map
+            assert_eq!(map.len(), removed_len);
         })
     });
-}
-
-fn hashslabmap_remove_100_000(c: &mut Criterion) {
-    let map = HSMAP_100K.clone();
-    let mut keys = Vec::from_iter(map.keys().copied());
-    let mut rng = small_rng();
-    keys.shuffle(&mut rng);
-
-    c.bench_function("hashslabmap_remove_100_000", |b| {
+    group.bench_function("indexmap.shift_remove", |b| {
+        let map = LOOKUP_INDEXMAP.clone();
+        let removed_len = map.len() - few_len;
         b.iter(|| {
             let mut map = map.clone();
-            for key in &keys {
-                map.remove(key);
-            }
-            assert_eq!(map.len(), 0);
-            map
-        })
-    });
-}
-
-fn indexmap_shift_remove_100_000_few(c: &mut Criterion) {
-    let map = IMAP_100K.clone();
-    let mut keys = Vec::from_iter(map.keys().copied());
-    let mut rng = small_rng();
-    keys.shuffle(&mut rng);
-    keys.truncate(50);
-
-    c.bench_function("indexmap_shift_remove_100_000_few", |b| {
-        b.iter(|| {
-            let mut map = map.clone();
-            for key in &keys {
+            for key in keys {
                 map.shift_remove(key);
             }
-            assert_eq!(map.len(), IMAP_100K.len() - keys.len());
-            map
+            assert_eq!(map.len(), removed_len);
         })
     });
-}
-
-fn hashslabmap_remove_100_000_few(c: &mut Criterion) {
-    let map = HSMAP_100K.clone();
-    let mut keys = Vec::from_iter(map.keys().copied());
-    let mut rng = small_rng();
-    keys.shuffle(&mut rng);
-    keys.truncate(50);
-
-    c.bench_function("hashslabmap_remove_100_000_few", |b| {
+    group.bench_function("hashslabmap", |b| {
+        let map = LOOKUP_HASHSLABMAP.clone();
+        let removed_len = map.len() - few_len;
         b.iter(|| {
             let mut map = map.clone();
-            for key in &keys {
+            for key in keys {
                 map.remove(key);
             }
-            assert_eq!(map.len(), IMAP_100K.len() - keys.len());
-            map
+            assert_eq!(map.len(), removed_len);
         })
     });
 }
 
-// fn shift_remove_indexmap_2_000_full(c: &mut Criterion) {
-//     let mut keys = KEYS[..2_000].to_vec();
-//     let mut map = IndexMap::with_capacity(keys.len());
-//     for &key in &keys {
-//         map.insert(key, key);
-//     }
-//     let mut rng = small_rng();
-//     keys.shuffle(&mut rng);
+// indexmap on any removing reduce it length, but not the hashslabmap
+fn bench_remove_index_half(c: &mut Criterion) {
+    let mut group = c.benchmark_group("remove_index_half");
 
-//     c.bench_function("shift_remove_indexmap_2_000_full", |b| b.iter()|| {
-//         let mut map = map.clone();
-//         for key in &keys {
-//             map.shift_remove(key);
-//         }
-//         assert_eq!(map.len(), 0);
-//         map
-//     });
-// }
+    let size = 1000;
+    let vec: Vec<(u32, u32)> = (0..size).map(|x| (x, x)).collect();
+    let mut keys = (0..size as usize / 2).collect::<Vec<_>>();
+    keys.shuffle(&mut small_rng());
+    let indices = &keys;
+
+    group.bench_function("indexmap.swap_remove", |b| {
+        let map = IndexMap::<u32, u32>::from_iter(vec.iter().cloned());
+        b.iter(|| {
+            let mut map = map.clone();
+            for idx in indices {
+                map.swap_remove_index(*idx);
+            }
+            assert_eq!(map.len(), indices.len());
+        });
+    });
+    group.bench_function("indexmap.shift_remove", |b| {
+        let map = IndexMap::<u32, u32>::from_iter(vec.iter().cloned());
+        b.iter(|| {
+            let mut map = map.clone();
+            for idx in indices {
+                map.shift_remove_index(*idx);
+            }
+            assert_eq!(map.len(), indices.len());
+        });
+    });
+    group.bench_function("hashslabmap", |b| {
+        let map = HashSlabMap::<u32, u32>::from_iter(vec.iter().cloned());
+        b.iter(|| {
+            let mut map = map.clone();
+            for idx in indices {
+                map.remove_index(*idx);
+            }
+            assert_eq!(map.len(), indices.len());
+        });
+    });
+}
+
+fn bench_remove_index_few(c: &mut Criterion) {
+    let mut group = c.benchmark_group("remove_index_few");
+
+    let few_len = 50;
+    let mut keys = (0..few_len).collect::<Vec<_>>();
+    keys.shuffle(&mut small_rng());
+    let indices = &keys;
+
+    group.bench_function("indexmap.swap_remove", |b| {
+        let map = LOOKUP_INDEXMAP.clone();
+        let removed_len = map.len() - few_len;
+        b.iter(|| {
+            let mut map = map.clone();
+            for idx in indices {
+                map.swap_remove_index(*idx);
+            }
+            assert_eq!(map.len(), removed_len);
+        });
+    });
+    group.bench_function("indexmap.shift_remove", |b| {
+        let map = LOOKUP_INDEXMAP.clone();
+        let removed_len = map.len() - few_len;
+        b.iter(|| {
+            let mut map = map.clone();
+            for idx in indices {
+                map.shift_remove_index(*idx);
+            }
+            assert_eq!(map.len(), removed_len);
+        });
+    });
+    group.bench_function("hashslabmap", |b| {
+        let map = LOOKUP_HASHSLABMAP.clone();
+        let removed_len = map.len() - few_len;
+        b.iter(|| {
+            let mut map = map.clone();
+            for idx in indices {
+                map.remove_index(*idx);
+            }
+            assert_eq!(map.len(), removed_len);
+        });
+    });
+}
 
 // fn few_retain_indexmap_100_000(c: &mut Criterion) {
 //     let map = IMAP_100K.clone();
@@ -774,140 +969,29 @@ fn hashslabmap_remove_100_000_few(c: &mut Criterion) {
 //     c.bench_function("indexmap_clone_for_sort_u32", |b| b.iter(|| map.clone()));
 // }
 
-// Emulate HashSlab::remove as update Option<T>
-fn indexmap_option_remove_100_000(c: &mut Criterion) {
-    let cap = LOOKUP_MAP_SIZE;
-    let mut map = IndexMap::with_capacity(cap as usize);
-    let keys = &*KEYS;
-    for &key in keys {
-        map.insert(key, Some(key));
-    }
-    let mut keys = Vec::from_iter(map.keys().copied());
-    let mut rng = small_rng();
-    keys.shuffle(&mut rng);
-
-    c.bench_function("indexmap_option_remove_100_000", |b| {
-        b.iter(|| {
-            let mut map = map.clone();
-            for key in &keys {
-                map.get_mut(key).map(|v| *v = None);
-            }
-            assert_eq!(map.values().filter(|v| v.is_some()).count(), 0);
-            map
-        })
-    });
-}
-
-fn hashslabmap_option_remove_100_000(c: &mut Criterion) {
-    let cap = LOOKUP_MAP_SIZE;
-    let mut map = HashSlabMap::with_capacity(cap as usize);
-    let keys = &*KEYS;
-    for &key in keys {
-        map.insert(key, Some(key));
-    }
-    let mut keys = Vec::from_iter(map.keys().copied());
-    let mut rng = small_rng();
-    keys.shuffle(&mut rng);
-
-    c.bench_function("hashslabmap_option_remove_100_000", |b| {
-        b.iter(|| {
-            let mut map = map.clone();
-            for key in &keys {
-                map.remove(key);
-            }
-            assert_eq!(map.len(), 0);
-            map
-        })
-    });
-}
-
-fn indexmap_option_remove_100_000_few(c: &mut Criterion) {
-    let cap = LOOKUP_MAP_SIZE;
-    let mut map = IndexMap::with_capacity(cap as usize);
-    let keys = &*KEYS;
-    for &key in keys {
-        map.insert(key, Some(key));
-    }
-    let mut keys = Vec::from_iter(map.keys().copied());
-    let mut rng = small_rng();
-    keys.shuffle(&mut rng);
-    keys.truncate(50);
-
-    c.bench_function("indexmap_option_remove_100_000_few", |b| {
-        b.iter(|| {
-            let mut map = map.clone();
-            for key in &keys {
-                map.get_mut(key).map(|v| *v = None);
-            }
-            assert_eq!(
-                map.values().filter(|v| v.is_some()).count(),
-                LOOKUP_MAP_SIZE as usize - 50
-            );
-            map
-        })
-    });
-}
-
-fn hashslabmap_option_remove_100_000_few(c: &mut Criterion) {
-    let mut map = HashSlabMap::with_capacity(LOOKUP_MAP_SIZE as usize);
-    let keys = &*KEYS;
-    for &key in keys {
-        map.insert(key, Some(key));
-    }
-    let mut keys = Vec::from_iter(map.keys().copied());
-    let mut rng = small_rng();
-    keys.shuffle(&mut rng);
-    keys.truncate(50);
-
-    c.bench_function("hashslabmap_option_remove_100_000_few", |b| {
-        b.iter(|| {
-            let mut map = map.clone();
-            for key in &keys {
-                map.remove(key);
-            }
-            assert_eq!(map.len(), LOOKUP_MAP_SIZE as usize - 50);
-            map
-        })
-    });
-}
-
 criterion_group!(
     benches,
     bench_new,
     bench_with_capacity,
+    bench_grow,
     bench_insert,
+    bench_lookup_key_exist,
+    bench_lookup_key_noexist,
+    bench_lookup_key_single,
+    bench_lookup_key_few,
+    bench_lookup_key_few_inorder,
+    bench_lookup_index_exist,
+    bench_lookup_index_noexist,
+    bench_lookup_index_single,
+    bench_lookup_index_random,
     // entry_hashmap_150,
     // entry_indexmap_150,
-    hashmap_iter_sum_10_000,
-    indexmap_iter_sum_10_000,
-    hashslabmap_iter_sum_10_000,
-    hashmap_iter_black_box_10_000,
-    indexmap_iter_black_box_10_000,
-    hashslabmap_iter_black_box_10_000,
-    hashmap_lookup_10_000_exist,
-    indexmap_lookup_10_000_exist,
-    hashslabmap_lookup_10_000_exist,
-    hashmap_lookup_10_000_noexist,
-    indexmap_lookup_10_000_noexist,
-    hashslabmap_lookup_10_000_noexist,
-    // lookup_hashmap_100_000_multi,
-    // lookup_indexmap_100_000_multi,
-    // lookup_hashmap_100_000_inorder_multi,
-    // lookup_indexmap_100_000_inorder_multi,
-    // lookup_hashmap_100_000_single,
-    // lookup_indexmap_100_000_single,
-    hashmap_grow_fnv_100_000,
-    indexmap_grow_fnv_100_000,
-    hashslabmap_grow_fnv_100_000,
+    bench_iter_sum,
+    bench_iter_black_box,
     // hashmap_merge_simple,
     // hashmap_merge_shuffle,
     // indexmap_merge_simple,
     // indexmap_merge_shuffle,
-    indexmap_swap_remove_100_000,
-    hashslabmap_remove_100_000,
-    indexmap_shift_remove_100_000_few,
-    hashslabmap_remove_100_000_few,
-    // shift_remove_indexmap_2_000_full,
     // few_retain_indexmap_100_000,
     // few_retain_hashmap_100_000,
     // half_retain_indexmap_100_000,
@@ -921,9 +1005,9 @@ criterion_group!(
     // indexmap_simple_sort_u32,
     // indexmap_clone_for_sort_s,
     // indexmap_clone_for_sort_u32,
-    indexmap_option_remove_100_000,
-    hashslabmap_option_remove_100_000,
-    indexmap_option_remove_100_000_few,
-    hashslabmap_option_remove_100_000_few
+    bench_remove_key,
+    bench_remove_key_few,
+    bench_remove_index_half,
+    bench_remove_index_few,
 );
 criterion_main!(benches);
