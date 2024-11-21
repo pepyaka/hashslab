@@ -10,7 +10,7 @@ use slab::Slab;
 
 use crate::TryReserveError;
 
-use super::{DirectAssignmentHasherBuilder, HsEntry, Query, RawHash, SlabEntry};
+use super::{DirectAssignmentHasherBuilder, KeyEntry, Query, RawHash, ValueEntry};
 
 mod keys;
 use keys::{FullKeys, Indices, IntoKeys, Keys};
@@ -28,8 +28,8 @@ use drain::{Drain, DrainFull};
 mod tests;
 
 pub struct HashSlabMap<K, V, S = RandomState> {
-    hs: HashSet<HsEntry<K>, DirectAssignmentHasherBuilder<S>>,
-    slab: Slab<SlabEntry<V>>,
+    hs: HashSet<KeyEntry<K>, DirectAssignmentHasherBuilder<S>>,
+    slab: Slab<ValueEntry<V>>,
 }
 
 impl<K, V> HashSlabMap<K, V> {
@@ -224,7 +224,7 @@ where
     pub fn insert_full(&mut self, key: K, value: V) -> (usize, Option<V>) {
         if let Some(entry) = self.hs.get(&Query(&key)) {
             let index = entry.index;
-            let SlabEntry { data, .. } = self
+            let ValueEntry { data, .. } = self
                 .slab
                 .get_mut(index)
                 .expect("slab should has entry with existing hashset entry");
@@ -235,11 +235,11 @@ where
             let mut hasher = self.hs.hasher().build_hasher();
             key.hash(&mut hasher);
             let hash_value = hasher.finish();
-            let index = self.slab.insert(SlabEntry {
+            let index = self.slab.insert(ValueEntry {
                 hash_value,
                 data: value,
             });
-            let hs_entry = HsEntry { index, key };
+            let hs_entry = KeyEntry { index, key };
             self.hs.insert(hs_entry);
             (index, None)
         }
@@ -250,10 +250,10 @@ where
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        let HsEntry { index, key } = self.hs.get(&Query(key))?;
+        let KeyEntry { index, key } = self.hs.get(&Query(key))?;
         self.slab
             .get(*index)
-            .map(|SlabEntry { data, .. }| (*index, key, data))
+            .map(|ValueEntry { data, .. }| (*index, key, data))
     }
 
     /// Return references to the key-value pair stored for `key`, if it is present, else `None`.
@@ -273,18 +273,18 @@ where
 
     /// Get a key-value pair by index
     pub fn get_index(&self, index: usize) -> Option<(&K, &V)> {
-        let SlabEntry { hash_value, data } = self.slab.get(index)?;
+        let ValueEntry { hash_value, data } = self.slab.get(index)?;
         self.hs
             .get(&RawHash {
                 value: *hash_value,
                 index,
             })
-            .map(|HsEntry { key, .. }| (key, data))
+            .map(|KeyEntry { key, .. }| (key, data))
     }
 
     /// Get a value by index.
     pub fn get_index_value(&self, index: usize) -> Option<&V> {
-        self.slab.get(index).map(|SlabEntry { data, .. }| data)
+        self.slab.get(index).map(|ValueEntry { data, .. }| data)
     }
 
     /// Return item index, if it exists in the map
@@ -292,25 +292,29 @@ where
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        self.hs.get(&Query(key)).map(|HsEntry { index, .. }| *index)
+        self.hs
+            .get(&Query(key))
+            .map(|KeyEntry { index, .. }| *index)
     }
 
     pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
     where
         Q: ?Sized + Hash + Equivalent<K>,
     {
-        let HsEntry { index, .. } = self.hs.get(&Query(key))?;
-        self.slab.get_mut(*index).map(|SlabEntry { data, .. }| data)
+        let KeyEntry { index, .. } = self.hs.get(&Query(key))?;
+        self.slab
+            .get_mut(*index)
+            .map(|ValueEntry { data, .. }| data)
     }
 
     pub fn get_index_mut(&mut self, index: usize) -> Option<(&K, &mut V)> {
-        let SlabEntry { hash_value, data } = self.slab.get_mut(index)?;
+        let ValueEntry { hash_value, data } = self.slab.get_mut(index)?;
         self.hs
             .get(&RawHash {
                 index,
                 value: *hash_value,
             })
-            .map(|HsEntry { key, .. }| (key, data))
+            .map(|KeyEntry { key, .. }| (key, data))
     }
 
     /// Remove the key-value pair equivalent to `key` and return its value.
@@ -334,21 +338,21 @@ where
     where
         Q: ?Sized + Hash + Equivalent<K>,
     {
-        let HsEntry { index, key } = self.hs.take(&Query(key))?;
+        let KeyEntry { index, key } = self.hs.take(&Query(key))?;
         self.slab
             .try_remove(index)
-            .map(|SlabEntry { data, .. }| (index, key, data))
+            .map(|ValueEntry { data, .. }| (index, key, data))
     }
 
     /// Remove the key-value pair by index
     pub fn remove_index(&mut self, index: usize) -> Option<(K, V)> {
-        let SlabEntry { data, hash_value } = self.slab.try_remove(index)?;
+        let ValueEntry { data, hash_value } = self.slab.try_remove(index)?;
         self.hs
             .take(&RawHash {
                 index,
                 value: hash_value,
             })
-            .map(|HsEntry { key, .. }| (key, data))
+            .map(|KeyEntry { key, .. }| (key, data))
     }
 }
 

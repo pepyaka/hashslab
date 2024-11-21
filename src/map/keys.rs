@@ -3,18 +3,18 @@ use std::iter::FusedIterator;
 
 use hashbrown::hash_set;
 
-use crate::HsEntry;
+use crate::KeyEntry;
 
 /// An iterator over the index-key pairs of an [`HashSlabMap`].
 ///
 /// This `struct` is created by the [`HashSlabMap::full_keys`] method.
 /// See its documentation for more.
 pub struct FullKeys<'a, K> {
-    pub(super) hs_iter: hash_set::Iter<'a, HsEntry<K>>,
+    pub(super) hs_iter: hash_set::Iter<'a, KeyEntry<K>>,
 }
 
 impl<'a, K> FullKeys<'a, K> {
-    pub(super) fn new(hs_iter: hash_set::Iter<'a, HsEntry<K>>) -> Self {
+    pub(super) fn new(hs_iter: hash_set::Iter<'a, KeyEntry<K>>) -> Self {
         Self { hs_iter }
     }
 }
@@ -40,7 +40,7 @@ impl<'a, K> Iterator for FullKeys<'a, K> {
     fn next(&mut self) -> Option<Self::Item> {
         self.hs_iter
             .next()
-            .map(|HsEntry { index, key }| (*index, key))
+            .map(|KeyEntry { index, key }| (*index, key))
     }
 }
 
@@ -57,11 +57,11 @@ impl<K> FusedIterator for FullKeys<'_, K> {}
 /// This `struct` is created by the [`HashSlabMap::keys`] method.
 /// See its documentation for more.
 pub struct Keys<'a, K> {
-    pub(super) hs_iter: hash_set::Iter<'a, HsEntry<K>>,
+    pub(super) hs_iter: hash_set::Iter<'a, KeyEntry<K>>,
 }
 
 impl<'a, K> Keys<'a, K> {
-    pub(super) fn new(hs_iter: hash_set::Iter<'a, HsEntry<K>>) -> Self {
+    pub(super) fn new(hs_iter: hash_set::Iter<'a, KeyEntry<K>>) -> Self {
         Self { hs_iter }
     }
 }
@@ -85,7 +85,7 @@ impl<'a, K> Iterator for Keys<'a, K> {
     type Item = &'a K;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.hs_iter.next().map(|HsEntry { key, .. }| key)
+        self.hs_iter.next().map(|KeyEntry { key, .. }| key)
     }
 }
 
@@ -102,11 +102,11 @@ impl<K> FusedIterator for Keys<'_, K> {}
 /// This `struct` is created by the [`HashSlabMap::into_keys`] method.
 /// See its documentation for more.
 pub struct IntoKeys<K> {
-    hs_into_iter: hash_set::IntoIter<HsEntry<K>>,
+    hs_into_iter: hash_set::IntoIter<KeyEntry<K>>,
 }
 
 impl<K> IntoKeys<K> {
-    pub(super) fn new(hs_into_iter: hash_set::IntoIter<HsEntry<K>>) -> Self {
+    pub(super) fn new(hs_into_iter: hash_set::IntoIter<KeyEntry<K>>) -> Self {
         Self { hs_into_iter }
     }
 }
@@ -123,7 +123,7 @@ impl<K> Iterator for IntoKeys<K> {
     type Item = K;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.hs_into_iter.next().map(|HsEntry { key, .. }| key)
+        self.hs_into_iter.next().map(|KeyEntry { key, .. }| key)
     }
 }
 
@@ -141,11 +141,11 @@ impl<K> FusedIterator for IntoKeys<K> {}
 /// See its documentation for more.
 #[derive(Debug, Clone)]
 pub struct Indices<'a, K> {
-    pub(super) hs_iter: hash_set::Iter<'a, HsEntry<K>>,
+    pub(super) hs_iter: hash_set::Iter<'a, KeyEntry<K>>,
 }
 
 impl<'a, K> Indices<'a, K> {
-    pub(super) fn new(hs_iter: hash_set::Iter<'a, HsEntry<K>>) -> Self {
+    pub(super) fn new(hs_iter: hash_set::Iter<'a, KeyEntry<K>>) -> Self {
         Self { hs_iter }
     }
 }
@@ -154,7 +154,7 @@ impl<'a, K> Iterator for Indices<'a, K> {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.hs_iter.next().map(|HsEntry { index, .. }| *index)
+        self.hs_iter.next().map(|KeyEntry { index, .. }| *index)
     }
 }
 

@@ -63,12 +63,12 @@ impl<S: BuildHasher> BuildHasher for DirectAssignmentHasherBuilder<S> {
 struct Query<K>(K);
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-struct HsEntry<K> {
+struct KeyEntry<K> {
     index: usize,
     key: K,
 }
 
-impl<K: Hash> Hash for HsEntry<K> {
+impl<K: Hash> Hash for KeyEntry<K> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.key.hash(state);
     }
@@ -87,25 +87,25 @@ impl Hash for RawHash {
     }
 }
 
-impl<'q, Q: ?Sized, K> Equivalent<HsEntry<K>> for Query<&'q Q>
+impl<'q, Q: ?Sized, K> Equivalent<KeyEntry<K>> for Query<&'q Q>
 where
     Q: Equivalent<K>,
 {
     #[inline]
-    fn equivalent(&self, entry: &HsEntry<K>) -> bool {
+    fn equivalent(&self, entry: &KeyEntry<K>) -> bool {
         self.0.equivalent(&entry.key)
     }
 }
 
-impl<K> Equivalent<HsEntry<K>> for RawHash {
+impl<K> Equivalent<KeyEntry<K>> for RawHash {
     #[inline]
-    fn equivalent(&self, entry: &HsEntry<K>) -> bool {
+    fn equivalent(&self, entry: &KeyEntry<K>) -> bool {
         self.index == entry.index
     }
 }
 
 #[derive(Debug, Clone)]
-struct SlabEntry<T> {
+struct ValueEntry<T> {
     hash_value: u64,
     data: T,
 }
@@ -174,16 +174,16 @@ mod tests {
     #[test]
     fn query_equivalence_well_known_types() {
         // Query vs HsEntry
-        assert!(Query(&()).equivalent(&HsEntry { index: 0, key: () }));
+        assert!(Query(&()).equivalent(&KeyEntry { index: 0, key: () }));
 
-        assert!(Query("hello").equivalent(&HsEntry {
+        assert!(Query("hello").equivalent(&KeyEntry {
             index: 0,
             key: String::from("hello")
         }));
 
-        assert!(!Query(&11).equivalent(&HsEntry { index: 0, key: 12 }));
+        assert!(!Query(&11).equivalent(&KeyEntry { index: 0, key: 12 }));
 
-        assert!(!Query([42].as_slice()).equivalent(&HsEntry {
+        assert!(!Query([42].as_slice()).equivalent(&KeyEntry {
             index: 0,
             key: Vec::new()
         }));
@@ -196,13 +196,13 @@ mod tests {
             index: 0,
             value: 42
         }
-        .equivalent(&HsEntry { index: 0, key: () }));
+        .equivalent(&KeyEntry { index: 0, key: () }));
 
         assert!(RawHash {
             index: 0,
             value: 42
         }
-        .equivalent(&HsEntry {
+        .equivalent(&KeyEntry {
             index: 0,
             key: String::from("A")
         }));
@@ -211,13 +211,13 @@ mod tests {
             index: 0,
             value: 42
         }
-        .equivalent(&HsEntry { index: 1, key: () }));
+        .equivalent(&KeyEntry { index: 1, key: () }));
 
         assert!(!RawHash {
             index: 0,
             value: 42
         }
-        .equivalent(&HsEntry {
+        .equivalent(&KeyEntry {
             index: 1,
             key: String::from("A")
         }));
@@ -247,22 +247,22 @@ mod tests {
         }
 
         // Query vs HsEntry
-        assert!(Query(&MyQuery::One).equivalent(&HsEntry {
+        assert!(Query(&MyQuery::One).equivalent(&KeyEntry {
             index: 0,
             key: MyKey::One
         }));
 
-        assert!(Query(&MyKey::One).equivalent(&HsEntry {
+        assert!(Query(&MyKey::One).equivalent(&KeyEntry {
             index: 0,
             key: MyKey::One
         }));
 
-        assert!(!Query(&MyQuery::One).equivalent(&HsEntry {
+        assert!(!Query(&MyQuery::One).equivalent(&KeyEntry {
             index: 0,
             key: MyKey::Two
         }));
 
-        assert!(!Query(&MyKey::One).equivalent(&HsEntry {
+        assert!(!Query(&MyKey::One).equivalent(&KeyEntry {
             index: 0,
             key: MyKey::Two
         }));
@@ -275,7 +275,7 @@ mod tests {
         let mut hs_entry_hasher = hasher.clone();
         let mut search_key_hasher = hasher.clone();
 
-        let hs_entry = HsEntry { index: 0, key: () };
+        let hs_entry = KeyEntry { index: 0, key: () };
         hs_entry.hash(&mut hs_entry_hasher);
 
         let search_key = Query(&());
@@ -287,7 +287,7 @@ mod tests {
         let mut hs_entry_hasher = hasher.clone();
         let mut search_key_hasher = hasher.clone();
 
-        let hs_entry = HsEntry { index: 0, key: () };
+        let hs_entry = KeyEntry { index: 0, key: () };
         hs_entry.hash(&mut hs_entry_hasher);
 
         let search_key = Query(&());
@@ -303,7 +303,7 @@ mod tests {
         let mut hs_entry_hasher = hasher.clone();
         let mut raw_hash_hasher = hasher.clone();
 
-        let hs_entry = HsEntry { index: 0, key: () };
+        let hs_entry = KeyEntry { index: 0, key: () };
         hs_entry.hash(&mut hs_entry_hasher);
         let hs_entry_hash_value = hs_entry_hasher.finish();
 
@@ -320,7 +320,7 @@ mod tests {
         let mut hs_entry_hasher = hasher.clone();
         let mut raw_hash_hasher = hasher.clone();
 
-        let hs_entry = HsEntry { index: 0, key: () };
+        let hs_entry = KeyEntry { index: 0, key: () };
         hs_entry.hash(&mut hs_entry_hasher);
         let hs_entry_hash_value = hs_entry_hasher.finish();
 
@@ -340,7 +340,7 @@ mod tests {
 
         let value = String::from("EQ");
 
-        let hs_entry = HsEntry {
+        let hs_entry = KeyEntry {
             index: 0,
             key: value.clone(),
         };
@@ -349,7 +349,7 @@ mod tests {
         let search_key = Query(value.as_str());
 
         assert_eq!(
-            Some(&HsEntry {
+            Some(&KeyEntry {
                 index: 0,
                 key: String::from("EQ"),
             }),
@@ -357,7 +357,7 @@ mod tests {
         );
 
         assert_ne!(
-            Some(&HsEntry {
+            Some(&KeyEntry {
                 index: 0,
                 key: String::from("NE"),
             }),
@@ -371,7 +371,7 @@ mod tests {
 
         let hasher_buider = DirectAssignmentHasherBuilder::new(RandomState::new());
         let mut hs = HashSet::with_hasher(hasher_buider);
-        let hs_entry = HsEntry {
+        let hs_entry = KeyEntry {
             index: 0,
             key: value.clone(),
         };
@@ -386,7 +386,7 @@ mod tests {
         };
 
         assert_eq!(
-            Some(&HsEntry {
+            Some(&KeyEntry {
                 index: 0,
                 key: String::from("EQ")
             }),
@@ -394,7 +394,7 @@ mod tests {
         );
 
         assert_ne!(
-            Some(&HsEntry {
+            Some(&KeyEntry {
                 index: 0,
                 key: String::from("NE"),
             }),
