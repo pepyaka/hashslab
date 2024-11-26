@@ -7,7 +7,7 @@ use std::{
 use hashbrown::{hash_set, HashSet};
 use slab::Slab;
 
-use crate::{DirectAssignmentHasherBuilder, KeyEntry, RawHash, ValueEntry};
+use crate::{HashSlabHasherBuilder, KeyEntry, RawHash, ValueEntry};
 
 use super::HashSlabMap;
 
@@ -51,7 +51,7 @@ impl<'a, K, V> Iterator for IterFull<'a, K, V> {
     type Item = (usize, &'a K, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let KeyEntry { key, index } = self.hs_iter.next()?;
+        let KeyEntry { key, index, .. } = self.hs_iter.next()?;
         self.slab
             .get(*index)
             .map(|ValueEntry { data, .. }| (*index, key, data))
@@ -121,13 +121,13 @@ impl<K, V> FusedIterator for Iter<'_, K, V> {}
 /// This `struct` is created by the [`HashSlabMap::iter_full_mut`] method.
 /// See its documentation for more.
 pub struct IterFullMut<'a, K, V, S> {
-    hs: &'a HashSet<KeyEntry<K>, DirectAssignmentHasherBuilder<S>>,
+    hs: &'a HashSet<KeyEntry<K>, HashSlabHasherBuilder<S>>,
     slab_iter_mut: slab::IterMut<'a, ValueEntry<V>>,
 }
 
 impl<'a, K, V, S> IterFullMut<'a, K, V, S> {
     pub(super) fn new(
-        hs: &'a HashSet<KeyEntry<K>, DirectAssignmentHasherBuilder<S>>,
+        hs: &'a HashSet<KeyEntry<K>, HashSlabHasherBuilder<S>>,
         slab_iter_mut: slab::IterMut<'a, ValueEntry<V>>,
     ) -> Self {
         Self { hs, slab_iter_mut }
@@ -156,11 +156,8 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         let (index, ValueEntry { hash_value, data }) = self.slab_iter_mut.next()?;
         self.hs
-            .get(&RawHash {
-                index,
-                value: *hash_value,
-            })
-            .map(|KeyEntry { index, key }| (*index, key, data))
+            .get(&RawHash::new(*hash_value, index))
+            .map(|KeyEntry { index, key, .. }| (*index, key, data))
     }
 }
 
@@ -221,7 +218,7 @@ impl<K, V> Iterator for IntoIter<K, V> {
     fn next(&mut self) -> Option<Self::Item> {
         self.hs_into_iter
             .next()
-            .map(|KeyEntry { index, key }| (key, self.slab.remove(index).data))
+            .map(|KeyEntry { index, key, .. }| (key, self.slab.remove(index).data))
     }
 }
 

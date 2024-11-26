@@ -124,53 +124,19 @@ quickcheck_limit! {
         map.is_empty()
     }
 
-    // fn drain_bounds(insert: Vec<u8>, range: (Bound<usize>, Bound<usize>)) -> TestResult {
-    //     let mut map = HashSlabMap::new();
-    //     for &key in &insert {
-    //         map.insert(key, ());
-    //     }
+    fn remove(insert: Vec<u8>, remove: Vec<u8>) -> bool {
+        let mut map = HashSlabMap::new();
+        for &key in &insert {
+            map.insert(key, ());
+        }
+        for &key in &remove {
+            map.remove(&key);
+        }
+        let elements = &set(&insert) - &set(&remove);
 
-    //     // First see if `Vec::drain` is happy with this range.
-    //     let result = std::panic::catch_unwind(|| {
-    //         let mut keys: Vec<u8> = map.keys().copied().collect();
-    //         keys.drain(range);
-    //         keys
-    //     });
-
-    //     if let Ok(keys) = result {
-    //         map.drain(range);
-    //         // Check that our `drain` matches the same key order.
-    //         assert!(map.keys().eq(&keys));
-    //         // Check that hash lookups all work too.
-    //         assert!(keys.iter().all(|key| map.contains_key(key)));
-    //         TestResult::passed()
-    //     } else {
-    //         // If `Vec::drain` panicked, so should we.
-    //         TestResult::must_fail(move || { map.drain(range); })
-    //     }
-    // }
-
-    // fn shift_remove(insert: Vec<u8>, remove: Vec<u8>) -> bool {
-    //     let mut map = HashSlabMap::new();
-    //     for &key in &insert {
-    //         map.insert(key, ());
-    //     }
-    //     for &key in &remove {
-    //         map.shift_remove(&key);
-    //     }
-    //     let elements = &set(&insert) - &set(&remove);
-
-    //     // Check that order is preserved after removals
-    //     let mut iter = map.keys();
-    //     for &key in insert.iter().unique() {
-    //         if elements.contains(&key) {
-    //             assert_eq!(Some(&key), iter.next());
-    //         }
-    //     }
-
-    //     map.len() == elements.len() && map.iter().count() == elements.len() &&
-    //         elements.iter().all(|k| map.get(k).is_some())
-    // }
+        map.len() == elements.len() && map.iter().count() == elements.len() &&
+            elements.iter().all(|k| map.get(k).is_some())
+    }
 
     // fn indexing(insert: Vec<u8>) -> bool {
     //     let mut map: HashSlabMap<_, _> = insert.into_iter().map(|x| (x, x)).collect();

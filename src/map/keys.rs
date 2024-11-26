@@ -40,7 +40,7 @@ impl<'a, K> Iterator for FullKeys<'a, K> {
     fn next(&mut self) -> Option<Self::Item> {
         self.hs_iter
             .next()
-            .map(|KeyEntry { index, key }| (*index, key))
+            .map(|KeyEntry { index, key, .. }| (*index, key))
     }
 }
 

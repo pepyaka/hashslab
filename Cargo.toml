@@ -1,16 +1,32 @@
 [package]
 name = "hashslab"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 documentation = "https://docs.rs/hashslab/"
 repository = "https://github.com/pepyaka/hashslab"
 license = "Apache-2.0 OR MIT"
 description = "A hash table with data accessible by index."
-keywords = ["hashmap", "no_std"]
+keywords = ["hash", "slab"]
 categories = ["data-structures"]
 
 [[bench]]
-name = "indexmap"
+name = "allocate"
+harness = false
+
+[[bench]]
+name = "insert"
+harness = false
+
+[[bench]]
+name = "lookup"
+harness = false
+
+[[bench]]
+name = "iter"
+harness = false
+
+[[bench]]
+name = "remove"
 harness = false
 
 [dependencies]

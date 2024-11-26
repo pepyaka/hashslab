@@ -1,6 +1,6 @@
 use std::{
     fmt,
-    hash::{BuildHasher, Hash, Hasher, RandomState},
+    hash::{BuildHasher, Hash, RandomState},
     isize, mem,
     ops::{Index, IndexMut},
 };
@@ -8,9 +8,9 @@ use std::{
 use hashbrown::{Equivalent, HashSet};
 use slab::Slab;
 
-use crate::TryReserveError;
+use crate::{EntryBuilder, TryReserveError};
 
-use super::{DirectAssignmentHasherBuilder, KeyEntry, Query, RawHash, ValueEntry};
+use super::{HashSlabHasherBuilder, KeyEntry, KeyQuery, RawHash, ValueEntry};
 
 mod keys;
 use keys::{FullKeys, Indices, IntoKeys, Keys};
@@ -28,7 +28,7 @@ use drain::{Drain, DrainFull};
 mod tests;
 
 pub struct HashSlabMap<K, V, S = RandomState> {
-    hs: HashSet<KeyEntry<K>, DirectAssignmentHasherBuilder<S>>,
+    hs: HashSet<KeyEntry<K>, HashSlabHasherBuilder<S>>,
     slab: Slab<ValueEntry<V>>,
 }
 
@@ -50,7 +50,7 @@ impl<K, V, S> HashSlabMap<K, V, S> {
     /// Create a new map with `hash_builder` and capacity for `n` entries.
     #[inline]
     pub fn with_capacity_and_hasher(n: usize, hash_builder: S) -> Self {
-        let hasher_buider = DirectAssignmentHasherBuilder::new(hash_builder);
+        let hasher_buider = HashSlabHasherBuilder(hash_builder);
         Self {
             hs: HashSet::with_capacity_and_hasher(n, hasher_buider),
             slab: Slab::with_capacity(n),
@@ -222,7 +222,8 @@ where
     /// If no equivalent key existed in the map: the new key-value pair is
     /// inserted, last in order, and `(index, None)` is returned.
     pub fn insert_full(&mut self, key: K, value: V) -> (usize, Option<V>) {
-        if let Some(entry) = self.hs.get(&Query(&key)) {
+        let query = KeyQuery(&key);
+        if let Some(entry) = self.hs.get(&query) {
             let index = entry.index;
             let ValueEntry { data, .. } = self
                 .slab
@@ -232,15 +233,9 @@ where
             mem::swap(data, &mut value);
             (index, Some(value))
         } else {
-            let mut hasher = self.hs.hasher().build_hasher();
-            key.hash(&mut hasher);
-            let hash_value = hasher.finish();
-            let index = self.slab.insert(ValueEntry {
-                hash_value,
-                data: value,
-            });
-            let hs_entry = KeyEntry { index, key };
-            self.hs.insert(hs_entry);
+            let builder = EntryBuilder::new(key, self.hs.hasher());
+            let index = self.slab.insert(builder.value_entry(value));
+            self.hs.insert(builder.key_entry(index));
             (index, None)
         }
     }
@@ -250,7 +245,8 @@ where
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        let KeyEntry { index, key } = self.hs.get(&Query(key))?;
+        let query = KeyQuery(key);
+        let KeyEntry { index, key, .. } = self.hs.get(&query)?;
         self.slab
             .get(*index)
             .map(|ValueEntry { data, .. }| (*index, key, data))
@@ -275,10 +271,7 @@ where
     pub fn get_index(&self, index: usize) -> Option<(&K, &V)> {
         let ValueEntry { hash_value, data } = self.slab.get(index)?;
         self.hs
-            .get(&RawHash {
-                value: *hash_value,
-                index,
-            })
+            .get(&RawHash::new(*hash_value, index))
             .map(|KeyEntry { key, .. }| (key, data))
     }
 
@@ -292,16 +285,16 @@ where
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        self.hs
-            .get(&Query(key))
-            .map(|KeyEntry { index, .. }| *index)
+        let query = KeyQuery(key);
+        self.hs.get(&query).map(|KeyEntry { index, .. }| *index)
     }
 
     pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
     where
         Q: ?Sized + Hash + Equivalent<K>,
     {
-        let KeyEntry { index, .. } = self.hs.get(&Query(key))?;
+        let query = KeyQuery(key);
+        let KeyEntry { index, .. } = self.hs.get(&query)?;
         self.slab
             .get_mut(*index)
             .map(|ValueEntry { data, .. }| data)
@@ -310,10 +303,7 @@ where
     pub fn get_index_mut(&mut self, index: usize) -> Option<(&K, &mut V)> {
         let ValueEntry { hash_value, data } = self.slab.get_mut(index)?;
         self.hs
-            .get(&RawHash {
-                index,
-                value: *hash_value,
-            })
+            .get(&RawHash::new(*hash_value, index))
             .map(|KeyEntry { key, .. }| (key, data))
     }
 
@@ -338,7 +328,8 @@ where
     where
         Q: ?Sized + Hash + Equivalent<K>,
     {
-        let KeyEntry { index, key } = self.hs.take(&Query(key))?;
+        let query = KeyQuery(key);
+        let KeyEntry { index, key, .. } = self.hs.take(&query)?;
         self.slab
             .try_remove(index)
             .map(|ValueEntry { data, .. }| (index, key, data))
@@ -348,10 +339,7 @@ where
     pub fn remove_index(&mut self, index: usize) -> Option<(K, V)> {
         let ValueEntry { data, hash_value } = self.slab.try_remove(index)?;
         self.hs
-            .take(&RawHash {
-                index,
-                value: hash_value,
-            })
+            .take(&RawHash::new(hash_value, index))
             .map(|KeyEntry { key, .. }| (key, data))
     }
 }

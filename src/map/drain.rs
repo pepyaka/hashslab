@@ -36,7 +36,7 @@ impl<'a, K, V> Iterator for DrainFull<'a, K, V> {
     type Item = (usize, K, V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let KeyEntry { key, index } = self.hs_drain.next()?;
+        let KeyEntry { key, index, .. } = self.hs_drain.next()?;
         self.slab
             .try_remove(index)
             .map(|ValueEntry { data, .. }| (index, key, data))
