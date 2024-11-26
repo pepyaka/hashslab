@@ -1,6 +1,6 @@
 # HashSlab
 
-[![build status](https://github.com/pepyaka/hashslab/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/pepyaka/hashslab/actions)
+[![build status](https://github.com/pepyaka/hashslab/actions/workflows/ci.yml/badge.svg)](https://github.com/pepyaka/hashslab/actions)
 [![crates.io](https://img.shields.io/crates/v/hashslab.svg)](https://crates.io/crates/hashslab)
 [![docs](https://docs.rs/hashslab/badge.svg)](https://docs.rs/hashslab)
 

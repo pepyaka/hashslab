@@ -7,7 +7,7 @@ use std::{
 use hashbrown::{hash_set, HashSet};
 use slab::Slab;
 
-use crate::{DirectAssignmentHasherBuilder, HsEntry, RawHash, SlabEntry};
+use crate::{HashSlabHasherBuilder, KeyEntry, RawHash, ValueEntry};
 
 use super::HashSlabMap;
 
@@ -16,14 +16,14 @@ use super::HashSlabMap;
 /// This `struct` is created by the [`HashSlabMap::iter_full`] method.
 /// See its documentation for more.
 pub struct IterFull<'a, K, V> {
-    pub(super) hs_iter: hash_set::Iter<'a, HsEntry<K>>,
-    pub(super) slab: &'a Slab<SlabEntry<V>>,
+    pub(super) hs_iter: hash_set::Iter<'a, KeyEntry<K>>,
+    pub(super) slab: &'a Slab<ValueEntry<V>>,
 }
 
 impl<'a, K, V> IterFull<'a, K, V> {
     pub(super) fn new(
-        hs_iter: hash_set::Iter<'a, HsEntry<K>>,
-        slab: &'a Slab<SlabEntry<V>>,
+        hs_iter: hash_set::Iter<'a, KeyEntry<K>>,
+        slab: &'a Slab<ValueEntry<V>>,
     ) -> Self {
         Self { hs_iter, slab }
     }
@@ -51,10 +51,10 @@ impl<'a, K, V> Iterator for IterFull<'a, K, V> {
     type Item = (usize, &'a K, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let HsEntry { key, index } = self.hs_iter.next()?;
+        let KeyEntry { key, index, .. } = self.hs_iter.next()?;
         self.slab
             .get(*index)
-            .map(|SlabEntry { data, .. }| (*index, key, data))
+            .map(|ValueEntry { data, .. }| (*index, key, data))
     }
 }
 
@@ -76,8 +76,8 @@ pub struct Iter<'a, K, V> {
 
 impl<'a, K, V> Iter<'a, K, V> {
     pub(super) fn new(
-        hs_iter: hash_set::Iter<'a, HsEntry<K>>,
-        slab: &'a Slab<SlabEntry<V>>,
+        hs_iter: hash_set::Iter<'a, KeyEntry<K>>,
+        slab: &'a Slab<ValueEntry<V>>,
     ) -> Self {
         Self {
             iter_full: IterFull { hs_iter, slab },
@@ -121,14 +121,14 @@ impl<K, V> FusedIterator for Iter<'_, K, V> {}
 /// This `struct` is created by the [`HashSlabMap::iter_full_mut`] method.
 /// See its documentation for more.
 pub struct IterFullMut<'a, K, V, S> {
-    hs: &'a HashSet<HsEntry<K>, DirectAssignmentHasherBuilder<S>>,
-    slab_iter_mut: slab::IterMut<'a, SlabEntry<V>>,
+    hs: &'a HashSet<KeyEntry<K>, HashSlabHasherBuilder<S>>,
+    slab_iter_mut: slab::IterMut<'a, ValueEntry<V>>,
 }
 
 impl<'a, K, V, S> IterFullMut<'a, K, V, S> {
     pub(super) fn new(
-        hs: &'a HashSet<HsEntry<K>, DirectAssignmentHasherBuilder<S>>,
-        slab_iter_mut: slab::IterMut<'a, SlabEntry<V>>,
+        hs: &'a HashSet<KeyEntry<K>, HashSlabHasherBuilder<S>>,
+        slab_iter_mut: slab::IterMut<'a, ValueEntry<V>>,
     ) -> Self {
         Self { hs, slab_iter_mut }
     }
@@ -154,13 +154,10 @@ where
     type Item = (usize, &'a K, &'a mut V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (index, SlabEntry { hash_value, data }) = self.slab_iter_mut.next()?;
+        let (index, ValueEntry { hash_value, data }) = self.slab_iter_mut.next()?;
         self.hs
-            .get(&RawHash {
-                index,
-                value: *hash_value,
-            })
-            .map(|HsEntry { index, key }| (*index, key, data))
+            .get(&RawHash::new(*hash_value, index))
+            .map(|KeyEntry { index, key, .. }| (*index, key, data))
     }
 }
 
@@ -203,8 +200,8 @@ where
 /// This `struct` is created by the [`HashSlabMap::into_iter`] method
 /// (provided by the [`IntoIterator`] trait). See its documentation for more.
 pub struct IntoIter<K, V> {
-    hs_into_iter: hash_set::IntoIter<HsEntry<K>>,
-    slab: Slab<SlabEntry<V>>,
+    hs_into_iter: hash_set::IntoIter<KeyEntry<K>>,
+    slab: Slab<ValueEntry<V>>,
 }
 
 impl<K: fmt::Debug, V: fmt::Debug> fmt::Debug for IntoIter<K, V> {
@@ -221,7 +218,7 @@ impl<K, V> Iterator for IntoIter<K, V> {
     fn next(&mut self) -> Option<Self::Item> {
         self.hs_into_iter
             .next()
-            .map(|HsEntry { index, key }| (key, self.slab.remove(index).data))
+            .map(|KeyEntry { index, key, .. }| (key, self.slab.remove(index).data))
     }
 }
 

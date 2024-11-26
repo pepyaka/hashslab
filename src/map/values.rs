@@ -1,7 +1,7 @@
 use core::fmt;
 use std::iter::FusedIterator;
 
-use crate::SlabEntry;
+use crate::ValueEntry;
 
 use super::iter::{IntoIter, IterFull};
 
@@ -55,11 +55,11 @@ impl<K, V> FusedIterator for Values<'_, K, V> {}
 /// This `struct` is created by the [`HashSlabMap::values_mut`] method.
 /// See its documentation for more.
 pub struct ValuesMut<'a, V> {
-    slab_iter_mut: slab::IterMut<'a, SlabEntry<V>>,
+    slab_iter_mut: slab::IterMut<'a, ValueEntry<V>>,
 }
 
 impl<'a, V> ValuesMut<'a, V> {
-    pub(super) fn new(slab_iter_mut: slab::IterMut<'a, SlabEntry<V>>) -> Self {
+    pub(super) fn new(slab_iter_mut: slab::IterMut<'a, ValueEntry<V>>) -> Self {
         Self { slab_iter_mut }
     }
 }
@@ -78,7 +78,7 @@ impl<'a, V> Iterator for ValuesMut<'a, V> {
     fn next(&mut self) -> Option<Self::Item> {
         self.slab_iter_mut
             .next()
-            .map(|(_, SlabEntry { data, .. })| data)
+            .map(|(_, ValueEntry { data, .. })| data)
     }
 }
 
