@@ -1,17 +1,14 @@
-name: Build and check
+name: Build and publish
 
 on:
   push:
     branches:
-      - dev
-  pull_request:
-    branches:
-      - dev
+      - main
   workflow_dispatch:
 
 jobs:
   deploy:
-    name: Build and Check
+    name: Build and Publish
     runs-on: ubuntu-latest
     env:
       CARGO_TERM_COLOR: always
@@ -21,4 +18,4 @@ jobs:
       - run: rustup default stable
       - run: cargo build
       - run: cargo test
-      - run: cargo publish --dry-run
+      - run: cargo publish --token ${{ secrets.CRATES_TOKEN }}
