@@ -150,20 +150,14 @@ impl<K> Equivalent<KeyEntry<K>> for RawHash {
     }
 }
 
-#[derive(Debug, Clone)]
-struct ValueEntry<T> {
-    hash_value: u64,
-    data: T,
-}
-
 /// The error type for [`try_reserve`][HashSlabMap::try_reserve] methods.
 #[derive(Clone, PartialEq, Eq, Debug, Error)]
 pub enum TryReserveError {
     #[error("Error due to the computed capacity exceeding the collection's maximum (usually `isize::MAX` bytes)")]
-    HashSetCapacityOverflow,
+    CapacityOverflow,
 
     #[error("The memory allocator returned an error. The layout of allocation request that failed: {layout:?}")]
-    HashSetAllocError { layout: std::alloc::Layout },
+    AllocError { layout: std::alloc::Layout },
 
     #[error(
         "sum of current ({capacity}) and additional ({additional}) capacity exceeds isize::MAX"
@@ -174,8 +168,8 @@ pub enum TryReserveError {
 impl From<hashbrown::TryReserveError> for TryReserveError {
     fn from(err: hashbrown::TryReserveError) -> Self {
         match err {
-            hashbrown::TryReserveError::CapacityOverflow => Self::HashSetCapacityOverflow,
-            hashbrown::TryReserveError::AllocError { layout } => Self::HashSetAllocError { layout },
+            hashbrown::TryReserveError::CapacityOverflow => Self::CapacityOverflow,
+            hashbrown::TryReserveError::AllocError { layout } => Self::AllocError { layout },
         }
     }
 }
@@ -193,13 +187,6 @@ impl<K: Hash> EntryBuilder<K> {
         Self {
             key,
             hash_value: hasher.finish(),
-        }
-    }
-
-    fn value_entry<T>(&self, value: T) -> ValueEntry<T> {
-        ValueEntry {
-            hash_value: self.hash_value,
-            data: value,
         }
     }
 
@@ -277,11 +264,6 @@ mod tests {
         let random_state = RandomState::new();
         let hasher_builder = HashSlabHasherBuilder(random_state.clone());
         let entry_builder = EntryBuilder::new(3u8, &hasher_builder);
-
-        let value_entry = entry_builder.value_entry(());
-        let mut hasher = random_state.build_hasher();
-        3u8.hash(&mut hasher);
-        assert_eq!(value_entry.hash_value, hasher.finish());
 
         let key_entry = entry_builder.key_entry(555);
         let mut hasher = random_state.build_hasher();
@@ -472,7 +454,7 @@ mod tests {
 
                 let entry_builder =
                     EntryBuilder::new(vec![1, 2, 3], &HashSlabHasherBuilder(builder.clone()));
-                let raw_hash = RawHash::new(entry_builder.value_entry(()).hash_value, 0);
+                let raw_hash = RawHash::new(entry_builder.hash_value, 0);
                 let entry = entry_builder.key_entry(666);
 
                 // DefaultHasher
@@ -502,7 +484,7 @@ mod tests {
 
                 let entry_builder =
                     EntryBuilder::new(vec![1, 2, 3], &HashSlabHasherBuilder(builder.clone()));
-                let raw_hash = RawHash::new(entry_builder.value_entry(()).hash_value, 0);
+                let raw_hash = RawHash::new(entry_builder.hash_value, 0);
                 let entry = entry_builder.key_entry(666);
 
                 // DefaultHasher
@@ -562,10 +544,7 @@ mod tests {
         let ne_key_entry = EntryBuilder::new(String::from("NE"), state).key_entry(index);
 
         let builder = EntryBuilder::new(String::from("EQ"), state);
-        let raw_hash = {
-            let ValueEntry { hash_value, .. } = builder.value_entry(());
-            RawHash::new(hash_value, index)
-        };
+        let raw_hash = RawHash::new(builder.hash_value, index);
 
         let key_entry = builder.key_entry(index);
         hs.insert(key_entry);

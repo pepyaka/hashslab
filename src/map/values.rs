@@ -1,7 +1,9 @@
 use core::fmt;
 use std::iter::FusedIterator;
 
-use crate::ValueEntry;
+use hashbrown::hash_map;
+
+use crate::KeyEntry;
 
 use super::iter::{IntoIter, IterFull};
 
@@ -54,41 +56,39 @@ impl<K, V> FusedIterator for Values<'_, K, V> {}
 ///
 /// This `struct` is created by the [`HashSlabMap::values_mut`] method.
 /// See its documentation for more.
-pub struct ValuesMut<'a, V> {
-    slab_iter_mut: slab::IterMut<'a, ValueEntry<V>>,
+pub struct ValuesMut<'a, K, V> {
+    values_mut: hash_map::ValuesMut<'a, KeyEntry<K>, V>,
 }
 
-impl<'a, V> ValuesMut<'a, V> {
-    pub(super) fn new(slab_iter_mut: slab::IterMut<'a, ValueEntry<V>>) -> Self {
-        Self { slab_iter_mut }
+impl<'a, K, V> ValuesMut<'a, K, V> {
+    pub(crate) fn new(values_mut: hash_map::ValuesMut<'a, KeyEntry<K>, V>) -> Self {
+        Self { values_mut }
     }
 }
 
-impl<V: fmt::Debug> fmt::Debug for ValuesMut<'_, V> {
+impl<K, V: fmt::Debug> fmt::Debug for ValuesMut<'_, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ValuesMut")
-            .field("remaining", &self.slab_iter_mut.len())
+            .field("remaining", &self.len())
             .finish()
     }
 }
 
-impl<'a, V> Iterator for ValuesMut<'a, V> {
+impl<'a, K, V> Iterator for ValuesMut<'a, K, V> {
     type Item = &'a mut V;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.slab_iter_mut
-            .next()
-            .map(|(_, ValueEntry { data, .. })| data)
+        self.values_mut.next()
     }
 }
 
-impl<V> ExactSizeIterator for ValuesMut<'_, V> {
+impl<K, V> ExactSizeIterator for ValuesMut<'_, K, V> {
     fn len(&self) -> usize {
-        self.slab_iter_mut.len()
+        self.values_mut.len()
     }
 }
 
-impl<V> FusedIterator for ValuesMut<'_, V> {}
+impl<K, V> FusedIterator for ValuesMut<'_, K, V> {}
 
 /// An owning iterator over the values of an [`HashSlabMap`].
 ///
