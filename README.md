@@ -58,8 +58,8 @@ assert_eq!(map.get_index_of(&'c'), Some(2));
 
 ## Implementation
 
-`HashSlab` is backed by a [`HashMap`](https://docs.rs/hashbrown/latest/hashbrown/struct.HashMap.html) for keys and a [`Slab`](https://docs.rs/slab/latest/slab/struct.Slab.html) for values. Keys and related slab's indexes are stored in the `HashMap`. Additionally, each `Slab` entry stores the *raw* hash value (u64) of the key, which can be used to locate the corresponding key entry in the HashMap.
+`HashSlab` is implemented using a [`HashMap`](https://docs.rs/hashbrown/latest/hashbrown/struct.HashMap.html) for key-value pairs and a [`Slab`](https://docs.rs/slab/latest/slab/struct.Slab.html) for managing pair indexes. Keys and values are stored in the `HashMap`, while each `Slab` entry also holds the *raw* hash value (`u64`) of the key, which can be used to efficiently locate the corresponding key entry in the `HashMap`.
 
 ## Capacity and reallocation
 
-`HashSlab` stores keys in a `HashMap` and values in a `Slab`. These data structures allocate their capacities independently: key space allocation depends on the `HashMap` allocator, while value allocation depends on the `Vec` allocator (as `Slab` is backed by a `Vec`).
+`HashSlab` stores keys and values in a `HashMap` and indexes in a `Slab`. These data structures manage their capacities independently: key storage is allocated by the `HashMap`'s allocator, while value storage is handled by the `Vec` allocator (as `Slab` is implemented on top of a `Vec`).

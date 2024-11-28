@@ -1,13 +1,9 @@
 use core::fmt;
-use std::{
-    hash::{BuildHasher, Hash},
-    iter::FusedIterator,
-};
+use std::{hash::Hash, iter::FusedIterator};
 
-use hashbrown::{hash_set, HashSet};
-use slab::Slab;
+use hashbrown::hash_map;
 
-use crate::{HashSlabHasherBuilder, KeyEntry, RawHash, ValueEntry};
+use crate::KeyEntry;
 
 use super::HashSlabMap;
 
@@ -16,16 +12,12 @@ use super::HashSlabMap;
 /// This `struct` is created by the [`HashSlabMap::iter_full`] method.
 /// See its documentation for more.
 pub struct IterFull<'a, K, V> {
-    pub(super) hs_iter: hash_set::Iter<'a, KeyEntry<K>>,
-    pub(super) slab: &'a Slab<ValueEntry<V>>,
+    pub(super) iter: hash_map::Iter<'a, KeyEntry<K>, V>,
 }
 
 impl<'a, K, V> IterFull<'a, K, V> {
-    pub(super) fn new(
-        hs_iter: hash_set::Iter<'a, KeyEntry<K>>,
-        slab: &'a Slab<ValueEntry<V>>,
-    ) -> Self {
-        Self { hs_iter, slab }
+    pub(super) fn new(iter: hash_map::Iter<'a, KeyEntry<K>, V>) -> Self {
+        Self { iter }
     }
 }
 
@@ -33,8 +25,7 @@ impl<'a, K, V> IterFull<'a, K, V> {
 impl<'a, K, V> Clone for IterFull<'a, K, V> {
     fn clone(&self) -> Self {
         IterFull {
-            hs_iter: self.hs_iter.clone(),
-            slab: self.slab,
+            iter: self.iter.clone(),
         }
     }
 }
@@ -51,16 +42,15 @@ impl<'a, K, V> Iterator for IterFull<'a, K, V> {
     type Item = (usize, &'a K, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let KeyEntry { key, index, .. } = self.hs_iter.next()?;
-        self.slab
-            .get(*index)
-            .map(|ValueEntry { data, .. }| (*index, key, data))
+        self.iter
+            .next()
+            .map(|(KeyEntry { key, index, .. }, value)| (*index, key, value))
     }
 }
 
 impl<K, V> ExactSizeIterator for IterFull<'_, K, V> {
     fn len(&self) -> usize {
-        self.hs_iter.len()
+        self.iter.len()
     }
 }
 
@@ -75,12 +65,9 @@ pub struct Iter<'a, K, V> {
 }
 
 impl<'a, K, V> Iter<'a, K, V> {
-    pub(super) fn new(
-        hs_iter: hash_set::Iter<'a, KeyEntry<K>>,
-        slab: &'a Slab<ValueEntry<V>>,
-    ) -> Self {
+    pub(super) fn new(iter: hash_map::Iter<'a, KeyEntry<K>, V>) -> Self {
         Self {
-            iter_full: IterFull { hs_iter, slab },
+            iter_full: IterFull::new(iter),
         }
     }
 }
@@ -120,44 +107,38 @@ impl<K, V> FusedIterator for Iter<'_, K, V> {}
 ///
 /// This `struct` is created by the [`HashSlabMap::iter_full_mut`] method.
 /// See its documentation for more.
-pub struct IterFullMut<'a, K, V, S> {
-    hs: &'a HashSet<KeyEntry<K>, HashSlabHasherBuilder<S>>,
-    slab_iter_mut: slab::IterMut<'a, ValueEntry<V>>,
+pub struct IterFullMut<'a, K, V> {
+    iter_mut: hash_map::IterMut<'a, KeyEntry<K>, V>,
 }
 
-impl<'a, K, V, S> IterFullMut<'a, K, V, S> {
-    pub(super) fn new(
-        hs: &'a HashSet<KeyEntry<K>, HashSlabHasherBuilder<S>>,
-        slab_iter_mut: slab::IterMut<'a, ValueEntry<V>>,
-    ) -> Self {
-        Self { hs, slab_iter_mut }
+impl<'a, K, V> IterFullMut<'a, K, V> {
+    pub(super) fn new(iter_mut: hash_map::IterMut<'a, KeyEntry<K>, V>) -> Self {
+        Self { iter_mut }
     }
 
     fn len(&self) -> usize {
-        self.slab_iter_mut.len()
+        self.iter_mut.len()
     }
 }
 
-impl<K: fmt::Debug, V: fmt::Debug, S> fmt::Debug for IterFullMut<'_, K, V, S> {
+impl<K: fmt::Debug, V: fmt::Debug> fmt::Debug for IterFullMut<'_, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("IterFullMut")
+        f.debug_struct("IntoFullMut")
             .field("remaining", &self.len())
             .finish()
     }
 }
 
-impl<'a, K, V, S> Iterator for IterFullMut<'a, K, V, S>
+impl<'a, K, V> Iterator for IterFullMut<'a, K, V>
 where
     K: Hash + Eq,
-    S: BuildHasher,
 {
     type Item = (usize, &'a K, &'a mut V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (index, ValueEntry { hash_value, data }) = self.slab_iter_mut.next()?;
-        self.hs
-            .get(&RawHash::new(*hash_value, index))
-            .map(|KeyEntry { index, key, .. }| (*index, key, data))
+        self.iter_mut
+            .next()
+            .map(|(KeyEntry { index, key, .. }, value)| (*index, key, value))
     }
 }
 
@@ -165,17 +146,17 @@ where
 ///
 /// This `struct` is created by the [`HashSlabMap::iter_mut`] method.
 /// See its documentation for more.
-pub struct IterMut<'a, K, V, S> {
-    iter_full_mut: IterFullMut<'a, K, V, S>,
+pub struct IterMut<'a, K, V> {
+    iter_full_mut: IterFullMut<'a, K, V>,
 }
 
-impl<'a, K, V, S> IterMut<'a, K, V, S> {
-    pub fn new(iter_full_mut: IterFullMut<'a, K, V, S>) -> Self {
+impl<'a, K, V> IterMut<'a, K, V> {
+    pub fn new(iter_full_mut: IterFullMut<'a, K, V>) -> Self {
         Self { iter_full_mut }
     }
 }
 
-impl<K: fmt::Debug, V: fmt::Debug, S> fmt::Debug for IterMut<'_, K, V, S> {
+impl<K: fmt::Debug, V: fmt::Debug> fmt::Debug for IterMut<'_, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("IterMut")
             .field("remaining", &self.iter_full_mut.len())
@@ -183,10 +164,9 @@ impl<K: fmt::Debug, V: fmt::Debug, S> fmt::Debug for IterMut<'_, K, V, S> {
     }
 }
 
-impl<'a, K, V, S> Iterator for IterMut<'a, K, V, S>
+impl<'a, K, V> Iterator for IterMut<'a, K, V>
 where
     K: Hash + Eq,
-    S: BuildHasher,
 {
     type Item = (&'a K, &'a mut V);
 
@@ -195,19 +175,58 @@ where
     }
 }
 
+/// An owning iterator over the index-key-value triples of an [`HashSlabMap`].
+///
+/// This `struct` is created by the [`HashSlabMap::into_full_iter`] method
+/// (provided by the [`IntoIterator`] trait). See its documentation for more.
+pub struct IntoFullIter<K, V> {
+    into_iter: hash_map::IntoIter<KeyEntry<K>, V>,
+}
+
+impl<K, V> IntoFullIter<K, V> {
+    pub(crate) fn new(into_iter: hash_map::IntoIter<KeyEntry<K>, V>) -> Self {
+        Self { into_iter }
+    }
+}
+
+impl<K: fmt::Debug, V: fmt::Debug> fmt::Debug for IntoFullIter<K, V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("IntoFullIter")
+            .field("remaining", &self.into_iter.len())
+            .finish()
+    }
+}
+
+impl<K, V> Iterator for IntoFullIter<K, V> {
+    type Item = (usize, K, V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.into_iter
+            .next()
+            .map(|(KeyEntry { index, key, .. }, value)| (index, key, value))
+    }
+}
+
+impl<K, V> ExactSizeIterator for IntoFullIter<K, V> {
+    fn len(&self) -> usize {
+        self.into_iter.len()
+    }
+}
+
+impl<K, V> FusedIterator for IntoFullIter<K, V> {}
+
 /// An owning iterator over the entries of an [`HashSlabMap`].
 ///
 /// This `struct` is created by the [`HashSlabMap::into_iter`] method
 /// (provided by the [`IntoIterator`] trait). See its documentation for more.
 pub struct IntoIter<K, V> {
-    hs_into_iter: hash_set::IntoIter<KeyEntry<K>>,
-    slab: Slab<ValueEntry<V>>,
+    into_full_iter: IntoFullIter<K, V>,
 }
 
 impl<K: fmt::Debug, V: fmt::Debug> fmt::Debug for IntoIter<K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("IntoIter")
-            .field("remaining", &self.hs_into_iter.len())
+            .field("remaining", &self.into_full_iter.len())
             .finish()
     }
 }
@@ -216,9 +235,9 @@ impl<K, V> Iterator for IntoIter<K, V> {
     type Item = (K, V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.hs_into_iter
+        self.into_full_iter
             .next()
-            .map(|KeyEntry { index, key, .. }| (key, self.slab.remove(index).data))
+            .map(|(_, key, value)| (key, value))
     }
 }
 
@@ -228,15 +247,14 @@ impl<K, V, S> IntoIterator for HashSlabMap<K, V, S> {
 
     fn into_iter(self) -> Self::IntoIter {
         IntoIter {
-            hs_into_iter: self.hs.into_iter(),
-            slab: self.slab,
+            into_full_iter: IntoFullIter::new(self.map.into_iter()),
         }
     }
 }
 
 impl<K, V> ExactSizeIterator for IntoIter<K, V> {
     fn len(&self) -> usize {
-        self.slab.len()
+        self.into_full_iter.len()
     }
 }
 
