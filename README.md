@@ -1,6 +1,6 @@
 # HashSlab
 
-[![build status](https://github.com/pepyaka/hashslab/actions/workflows/ci.yml/badge.svg)](https://github.com/pepyaka/hashslab/actions)
+[![build status](https://github.com/pepyaka/hashslab/actions/workflows/check.yaml/badge.svg)](https://github.com/pepyaka/hashslab/actions)
 [![crates.io](https://img.shields.io/crates/v/hashslab.svg)](https://crates.io/crates/hashslab)
 [![docs](https://docs.rs/hashslab/badge.svg)](https://docs.rs/hashslab)
 
@@ -58,8 +58,20 @@ assert_eq!(map.get_index_of(&'c'), Some(2));
 
 ## Implementation
 
-`HashSlab` is backed by a [`HashMap`](https://docs.rs/hashbrown/latest/hashbrown/struct.HashMap.html) for keys and a [`Slab`](https://docs.rs/slab/latest/slab/struct.Slab.html) for values. Keys and related slab's indexes are stored in the `HashMap`. Additionally, each `Slab` entry stores the *raw* hash value (u64) of the key, which can be used to locate the corresponding key entry in the HashMap.
+`HashSlab` is implemented using a [`HashMap`](https://docs.rs/hashbrown/latest/hashbrown/struct.HashMap.html) for key-value pairs and a [`Slab`](https://docs.rs/slab/latest/slab/struct.Slab.html) for managing pair indexes. Keys and values are stored in the `HashMap`, while each `Slab` entry also holds the *raw* hash value (`u64`) of the key, which can be used to efficiently locate the corresponding key entry in the `HashMap`.
 
-## Capacity and reallocation
+## Performance
 
-`HashSlab` stores keys in a `HashMap` and values in a `Slab`. These data structures allocate their capacities independently: key space allocation depends on the `HashMap` allocator, while value allocation depends on the `Vec` allocator (as `Slab` is backed by a `Vec`).
+In general, `HashSlabMap` has comparable performance to `HashMap` and `IndexMap`. Below is a summary of its performance characteristics:
+
+- **Creation:** Empty created `HashSlabMap` performs worse because internally it creates 2 data structures `HashMap` and `Slab`, taking twice as long as `HashMap` and `IndexMap`. With preallocation, performance is similar, as most time is spent on memory allocation.
+
+- **Insertion:** Performance is identical across all three data structures.
+
+- **Lookup:** Searching with `.get()` performs the same as `HashMap` and `IndexMap`. However, `.get_index()` is about 10 times slower than `IndexMap` because `IndexMap` stores entries in a `Vec`-like structure, making index lookups as fast as `.get()` in a `Vec`. In `HashSlabMap`, the hash value is first located in the `Slab`, followed by the corresponding key-value pair in the `HashMap`.
+
+- **Removal:** Removing by key is on par with `HashMap` and faster than `IndexMap`. `IndexMap` provides two methods:
+  - `.swap_remove()` - performs similarly to `HashSlabMap::remove()`.
+  - `.shift_remove()` - significantly slower, as it shifts elements in the `Vec`. This method is *not* included in benchmarks due to being 50-100 times slower.
+
+Comprehensive benchmarks, including detailed graphs and comparisons, can be found [here](https://pepyaka.github.io/hashslab/report/).

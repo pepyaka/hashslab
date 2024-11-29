@@ -1,26 +1,23 @@
 use core::fmt;
 use std::iter::FusedIterator;
 
-use hashbrown::hash_set;
+use hashbrown::hash_map;
 use slab::Slab;
 
-use crate::{KeyEntry, ValueEntry};
+use crate::KeyEntry;
 
 /// A draining iterator over the index-key-value triples of an [`HashSlabMap`].
 ///
 /// This `struct` is created by the [`HashSlabMap::drain`] method.
 /// See its documentation for more.
 pub struct DrainFull<'a, K, V> {
-    pub(super) hs_drain: hash_set::Drain<'a, KeyEntry<K>>,
-    pub(super) slab: &'a mut Slab<ValueEntry<V>>,
+    pub(super) drain: hash_map::Drain<'a, KeyEntry<K>, V>,
+    pub(super) slab: &'a mut Slab<u64>,
 }
 
 impl<'a, K, V> DrainFull<'a, K, V> {
-    pub(super) fn new(
-        hs_drain: hash_set::Drain<'a, KeyEntry<K>>,
-        slab: &'a mut Slab<ValueEntry<V>>,
-    ) -> Self {
-        Self { hs_drain, slab }
+    pub(super) fn new(drain: hash_map::Drain<'a, KeyEntry<K>, V>, slab: &'a mut Slab<u64>) -> Self {
+        Self { drain, slab }
     }
 }
 
@@ -36,16 +33,18 @@ impl<'a, K, V> Iterator for DrainFull<'a, K, V> {
     type Item = (usize, K, V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let KeyEntry { key, index, .. } = self.hs_drain.next()?;
-        self.slab
-            .try_remove(index)
-            .map(|ValueEntry { data, .. }| (index, key, data))
+        self.drain
+            .next()
+            .map(|(KeyEntry { key, index, .. }, value)| {
+                self.slab.remove(index);
+                (index, key, value)
+            })
     }
 }
 
 impl<K, V> ExactSizeIterator for DrainFull<'_, K, V> {
     fn len(&self) -> usize {
-        self.hs_drain.len()
+        self.drain.len()
     }
 }
 

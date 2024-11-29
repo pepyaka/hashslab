@@ -1,6 +1,6 @@
 [package]
 name = "hashslab"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 documentation = "https://docs.rs/hashslab/"
 repository = "https://github.com/pepyaka/hashslab"
@@ -29,6 +29,11 @@ harness = false
 name = "remove"
 harness = false
 
+[[bench]]
+name = "iai"
+harness = false
+bench = false
+
 [dependencies]
 slab = "0.4.9"
 hashbrown = "0.15.1"
@@ -44,3 +49,4 @@ fxhash = "0.2.1"
 serde_derive = "1.0"
 indexmap = "2.6.0"
 criterion = { version = "0.5" }
+iai-callgrind = "0.14"

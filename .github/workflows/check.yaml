@@ -1,0 +1,24 @@
+name: Build and check
+
+on:
+  push:
+    branches:
+      - dev
+  pull_request:
+    branches:
+      - dev
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build and Check
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup update stable
+      - run: rustup default stable
+      - run: cargo build
+      - run: cargo test
+      - run: cargo publish --dry-run
