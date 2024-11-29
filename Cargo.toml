@@ -1,6 +1,6 @@
 [package]
 name = "hashslab"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 documentation = "https://docs.rs/hashslab/"
 repository = "https://github.com/pepyaka/hashslab"
