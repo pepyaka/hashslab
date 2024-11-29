@@ -1,8 +1,9 @@
-name: Benchmark and publish
+name: Benchmark
 
 on:
   push:
-    branches: ["dev"]
+    branches:
+      - main
   workflow_dispatch:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
@@ -19,7 +20,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Benchmark and publish
+    name: Benchmark
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
