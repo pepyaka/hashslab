@@ -1,7 +1,7 @@
 use std::{
     fmt,
     hash::{BuildHasher, Hash, RandomState},
-    isize, mem,
+    mem,
     ops::{Index, IndexMut},
 };
 

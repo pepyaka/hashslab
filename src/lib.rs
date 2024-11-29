@@ -182,12 +182,8 @@ struct EntryBuilder<K> {
 
 impl<K: Hash> EntryBuilder<K> {
     fn new<S: BuildHasher>(key: K, hasher_builder: &HashSlabHasherBuilder<S>) -> Self {
-        let mut hasher = hasher_builder.0.build_hasher();
-        key.hash(&mut hasher);
-        Self {
-            key,
-            hash_value: hasher.finish(),
-        }
+        let hash_value = hasher_builder.0.hash_one(&key);
+        Self { key, hash_value }
     }
 
     fn key_entry(self, index: usize) -> KeyEntry<K> {
