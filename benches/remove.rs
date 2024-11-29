@@ -35,16 +35,6 @@ fn bench_remove_key(c: &mut Criterion) {
             assert_eq!(map.len(), 0);
         })
     });
-    group.bench_function("indexmap.shift_remove", |b| {
-        let map = IndexMap::<u32, u32>::from_iter(vec.iter().cloned());
-        b.iter(|| {
-            let mut map = map.clone();
-            for key in 0..size {
-                map.shift_remove(&key);
-            }
-            assert_eq!(map.len(), 0);
-        })
-    });
     group.bench_function("hashslabmap", |b| {
         let map = HashSlabMap::<u32, u32>::from_iter(vec.iter().cloned());
         b.iter(|| {
@@ -89,17 +79,6 @@ fn bench_remove_key_few(c: &mut Criterion) {
             assert_eq!(map.len(), removed_len);
         })
     });
-    group.bench_function("indexmap.shift_remove", |b| {
-        let map = SHUFFLED_INDEXMAP.clone();
-        let removed_len = map.len() - few_len;
-        b.iter(|| {
-            let mut map = map.clone();
-            for key in keys {
-                map.shift_remove(key);
-            }
-            assert_eq!(map.len(), removed_len);
-        })
-    });
     group.bench_function("hashslabmap", |b| {
         let map = SHUFFLED_HASHSLABMAP.clone();
         let removed_len = map.len() - few_len;
@@ -133,16 +112,6 @@ fn bench_remove_index_half(c: &mut Criterion) {
             assert_eq!(map.len(), indices.len());
         });
     });
-    group.bench_function("indexmap.shift_remove", |b| {
-        let map = IndexMap::<u32, u32>::from_iter(vec.iter().cloned());
-        b.iter(|| {
-            let mut map = map.clone();
-            for idx in indices {
-                map.shift_remove_index(*idx);
-            }
-            assert_eq!(map.len(), indices.len());
-        });
-    });
     group.bench_function("hashslabmap", |b| {
         let map = HashSlabMap::<u32, u32>::from_iter(vec.iter().cloned());
         b.iter(|| {
@@ -170,17 +139,6 @@ fn bench_remove_index_few(c: &mut Criterion) {
             let mut map = map.clone();
             for idx in indices {
                 map.swap_remove_index(*idx);
-            }
-            assert_eq!(map.len(), removed_len);
-        });
-    });
-    group.bench_function("indexmap.shift_remove", |b| {
-        let map = SHUFFLED_INDEXMAP.clone();
-        let removed_len = map.len() - few_len;
-        b.iter(|| {
-            let mut map = map.clone();
-            for idx in indices {
-                map.shift_remove_index(*idx);
             }
             assert_eq!(map.len(), removed_len);
         });

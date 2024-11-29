@@ -2,11 +2,8 @@ name: Build and check
 
 on:
   push:
-    branches:
-      - dev
-  pull_request:
-    branches:
-      - dev
+    branches-ignore:
+      - main
   workflow_dispatch:
 
 jobs:
