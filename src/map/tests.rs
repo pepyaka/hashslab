@@ -1,5 +1,6 @@
 use super::*;
 
+mod hashbrown;
 mod indexmap;
 
 #[derive(Debug, Hash, PartialEq, Eq)]

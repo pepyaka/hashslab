@@ -6,21 +6,21 @@ use quickcheck::Gen;
 use quickcheck::QuickCheck;
 // use quickcheck::TestResult;
 
-// use fnv::FnvHasher;
-// use std::hash::{BuildHasher, BuildHasherDefault};
-// type FnvBuilder = BuildHasherDefault<FnvHasher>;
-// type HashSlabMapFnv<K, V> = HashSlabMap<K, V, FnvBuilder>;
+use fnv::FnvHasher;
+use std::hash::{BuildHasher, BuildHasherDefault};
+type FnvBuilder = BuildHasherDefault<FnvHasher>;
+type HashSlabMapFnv<K, V> = HashSlabMap<K, V, FnvBuilder>;
 
 use std::cmp::min;
-// use std::collections::HashMap;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
 // use std::ops::Bound;
 use std::ops::Deref;
 
-// use indexmap::map::Entry;
-// use std::collections::hash_map::Entry as StdEntry;
+use hashslab::map::Entry;
+use std::collections::hash_map::Entry as StdEntry;
 
 fn set<'a, T: 'a, I>(iter: I) -> HashSet<T>
 where
@@ -159,216 +159,7 @@ quickcheck_limit! {
     //     })
     // }
 
-    // // Use `u8` test indices so quickcheck is less likely to go out of bounds.
-    // fn set_swap_indices(vec: Vec<u8>, a: u8, b: u8) -> TestResult {
-    //     let mut set = IndexSet::<u8>::from_iter(vec);
-    //     let a = usize::from(a);
-    //     let b = usize::from(b);
-
-    //     if a >= set.len() || b >= set.len() {
-    //         return TestResult::discard();
-    //     }
-
-    //     let mut vec = Vec::from_iter(set.iter().cloned());
-    //     vec.swap(a, b);
-
-    //     set.swap_indices(a, b);
-
-    //     // Check both iteration order and hash lookups
-    //     assert!(set.iter().eq(vec.iter()));
-    //     assert!(vec.iter().enumerate().all(|(i, x)| {
-    //         set.get_index_of(x) == Some(i)
-    //     }));
-    //     TestResult::passed()
-    // }
-
-    // fn map_swap_indices(vec: Vec<u8>, from: u8, to: u8) -> TestResult {
-    //     test_map_swap_indices(vec, from, to, HashSlabMap::swap_indices)
-    // }
-
-    // fn occupied_entry_swap_indices(vec: Vec<u8>, from: u8, to: u8) -> TestResult {
-    //     test_map_swap_indices(vec, from, to, |map, from, to| {
-    //         let key = map.keys()[from];
-    //         match map.entry(key) {
-    //             Entry::Occupied(entry) => entry.swap_indices(to),
-    //             _ => unreachable!(),
-    //         }
-    //     })
-    // }
-
-    // fn indexed_entry_swap_indices(vec: Vec<u8>, from: u8, to: u8) -> TestResult {
-    //     test_map_swap_indices(vec, from, to, |map, from, to| {
-    //         map.get_index_entry(from).unwrap().swap_indices(to);
-    //     })
-    // }
-
-    // fn raw_occupied_entry_swap_indices(vec: Vec<u8>, from: u8, to: u8) -> TestResult {
-    //     use indexmap::map::raw_entry_v1::{RawEntryApiV1, RawEntryMut};
-    //     test_map_swap_indices(vec, from, to, |map, from, to| {
-    //         let key = map.keys()[from];
-    //         match map.raw_entry_mut_v1().from_key(&key) {
-    //             RawEntryMut::Occupied(entry) => entry.swap_indices(to),
-    //             _ => unreachable!(),
-    //         }
-    //     })
-    // }
-
-    // // Use `u8` test indices so quickcheck is less likely to go out of bounds.
-    // fn set_move_index(vec: Vec<u8>, from: u8, to: u8) -> TestResult {
-    //     let mut set = IndexSet::<u8>::from_iter(vec);
-    //     let from = usize::from(from);
-    //     let to = usize::from(to);
-
-    //     if from >= set.len() || to >= set.len() {
-    //         return TestResult::discard();
-    //     }
-
-    //     let mut vec = Vec::from_iter(set.iter().cloned());
-    //     let x = vec.remove(from);
-    //     vec.insert(to, x);
-
-    //     set.move_index(from, to);
-
-    //     // Check both iteration order and hash lookups
-    //     assert!(set.iter().eq(vec.iter()));
-    //     assert!(vec.iter().enumerate().all(|(i, x)| {
-    //         set.get_index_of(x) == Some(i)
-    //     }));
-    //     TestResult::passed()
-    // }
-
-    // fn map_move_index(vec: Vec<u8>, from: u8, to: u8) -> TestResult {
-    //     test_map_move_index(vec, from, to, HashSlabMap::move_index)
-    // }
-
-    // fn occupied_entry_move_index(vec: Vec<u8>, from: u8, to: u8) -> TestResult {
-    //     test_map_move_index(vec, from, to, |map, from, to| {
-    //         let key = map.keys()[from];
-    //         match map.entry(key) {
-    //             Entry::Occupied(entry) => entry.move_index(to),
-    //             _ => unreachable!(),
-    //         }
-    //     })
-    // }
-
-    // fn indexed_entry_move_index(vec: Vec<u8>, from: u8, to: u8) -> TestResult {
-    //     test_map_move_index(vec, from, to, |map, from, to| {
-    //         map.get_index_entry(from).unwrap().move_index(to);
-    //     })
-    // }
-
-    // fn raw_occupied_entry_move_index(vec: Vec<u8>, from: u8, to: u8) -> TestResult {
-    //     use indexmap::map::raw_entry_v1::{RawEntryApiV1, RawEntryMut};
-    //     test_map_move_index(vec, from, to, |map, from, to| {
-    //         let key = map.keys()[from];
-    //         match map.raw_entry_mut_v1().from_key(&key) {
-    //             RawEntryMut::Occupied(entry) => entry.move_index(to),
-    //             _ => unreachable!(),
-    //         }
-    //     })
-    // }
-
-    // fn occupied_entry_shift_insert(vec: Vec<u8>, i: u8) -> TestResult {
-    //     test_map_shift_insert(vec, i, |map, i, key| {
-    //         match map.entry(key) {
-    //             Entry::Vacant(entry) => entry.shift_insert(i, ()),
-    //             _ => unreachable!(),
-    //         };
-    //     })
-    // }
-
-    // fn raw_occupied_entry_shift_insert(vec: Vec<u8>, i: u8) -> TestResult {
-    //     use indexmap::map::raw_entry_v1::{RawEntryApiV1, RawEntryMut};
-    //     test_map_shift_insert(vec, i, |map, i, key| {
-    //         match map.raw_entry_mut_v1().from_key(&key) {
-    //             RawEntryMut::Vacant(entry) => entry.shift_insert(i, key, ()),
-    //             _ => unreachable!(),
-    //         };
-    //     })
-    // }
 }
-
-// fn test_map_swap_indices<F>(vec: Vec<u8>, a: u8, b: u8, swap_indices: F) -> TestResult
-// where
-//     F: FnOnce(&mut HashSlabMap<u8, ()>, usize, usize),
-// {
-//     let mut map = HashSlabMap::<u8, ()>::from_iter(vec.into_iter().map(|k| (k, ())));
-//     let a = usize::from(a);
-//     let b = usize::from(b);
-
-//     if a >= map.len() || b >= map.len() {
-//         return TestResult::discard();
-//     }
-
-//     let mut vec = Vec::from_iter(map.keys().copied());
-//     vec.swap(a, b);
-
-//     swap_indices(&mut map, a, b);
-
-//     // Check both iteration order and hash lookups
-//     assert!(map.keys().eq(vec.iter()));
-//     assert!(vec
-//         .iter()
-//         .enumerate()
-//         .all(|(i, x)| { map.get_index_of(x) == Some(i) }));
-//     TestResult::passed()
-// }
-
-// fn test_map_move_index<F>(vec: Vec<u8>, from: u8, to: u8, move_index: F) -> TestResult
-// where
-//     F: FnOnce(&mut HashSlabMap<u8, ()>, usize, usize),
-// {
-//     let mut map = HashSlabMap::<u8, ()>::from_iter(vec.into_iter().map(|k| (k, ())));
-//     let from = usize::from(from);
-//     let to = usize::from(to);
-
-//     if from >= map.len() || to >= map.len() {
-//         return TestResult::discard();
-//     }
-
-//     let mut vec = Vec::from_iter(map.keys().copied());
-//     let x = vec.remove(from);
-//     vec.insert(to, x);
-
-//     move_index(&mut map, from, to);
-
-//     // Check both iteration order and hash lookups
-//     assert!(map.keys().eq(vec.iter()));
-//     assert!(vec
-//         .iter()
-//         .enumerate()
-//         .all(|(i, x)| { map.get_index_of(x) == Some(i) }));
-//     TestResult::passed()
-// }
-
-// fn test_map_shift_insert<F>(vec: Vec<u8>, i: u8, shift_insert: F) -> TestResult
-// where
-//     F: FnOnce(&mut HashSlabMap<u8, ()>, usize, u8),
-// {
-//     let mut map = HashSlabMap::<u8, ()>::from_iter(vec.into_iter().map(|k| (k, ())));
-//     let i = usize::from(i);
-//     if i >= map.len() {
-//         return TestResult::discard();
-//     }
-
-//     let mut vec = Vec::from_iter(map.keys().copied());
-//     let x = vec.pop().unwrap();
-//     vec.insert(i, x);
-
-//     let (last, ()) = map.pop().unwrap();
-//     assert_eq!(x, last);
-//     map.shrink_to_fit(); // so we might have to grow and rehash the table
-
-//     shift_insert(&mut map, i, last);
-
-//     // Check both iteration order and hash lookups
-//     assert!(map.keys().eq(vec.iter()));
-//     assert!(vec
-//         .iter()
-//         .enumerate()
-//         .all(|(i, x)| { map.get_index_of(x) == Some(i) }));
-//     TestResult::passed()
-// }
 
 use crate::Op::*;
 #[derive(Copy, Clone, Debug)]
@@ -394,121 +185,119 @@ where
     }
 }
 
-// fn do_ops<K, V, S>(ops: &[Op<K, V>], a: &mut HashSlabMap<K, V, S>, b: &mut HashMap<K, V>)
-// where
-//     K: Hash + Eq + Clone,
-//     V: Clone,
-//     S: BuildHasher,
-// {
-//     for op in ops {
-//         match *op {
-//             Add(ref k, ref v) => {
-//                 a.insert(k.clone(), v.clone());
-//                 b.insert(k.clone(), v.clone());
-//             }
-//             // AddEntry(ref k, ref v) => {
-//             //     a.entry(k.clone()).or_insert_with(|| v.clone());
-//             //     b.entry(k.clone()).or_insert_with(|| v.clone());
-//             // }
-//             AddEntry(_, _) => {}
-//             Remove(ref k) => {
-//                 a.remove(k);
-//                 b.remove(k);
-//             }
-//             // RemoveEntry(ref k) => {
-//             //     if let Entry::Occupied(ent) = a.entry(k.clone()) {
-//             //         ent.swap_remove_entry();
-//             //     }
-//             //     if let StdEntry::Occupied(ent) = b.entry(k.clone()) {
-//             //         ent.remove_entry();
-//             //     }
-//             // }
-//             RemoveEntry(_) => {}
-//         }
-//         //println!("{:?}", a);
-//     }
-// }
+fn do_ops<K, V, S>(ops: &[Op<K, V>], a: &mut HashSlabMap<K, V, S>, b: &mut HashMap<K, V>)
+where
+    K: Hash + Eq + Clone,
+    V: Clone,
+    S: BuildHasher,
+{
+    for op in ops {
+        match *op {
+            Add(ref k, ref v) => {
+                a.insert(k.clone(), v.clone());
+                b.insert(k.clone(), v.clone());
+            }
+            AddEntry(ref k, ref v) => {
+                a.entry(k.clone()).or_insert_with(|| v.clone());
+                b.entry(k.clone()).or_insert_with(|| v.clone());
+            }
+            Remove(ref k) => {
+                a.remove(k);
+                b.remove(k);
+            }
+            RemoveEntry(ref k) => {
+                if let Entry::Occupied(ent) = a.entry(k.clone()) {
+                    ent.remove_entry();
+                }
+                if let StdEntry::Occupied(ent) = b.entry(k.clone()) {
+                    ent.remove_entry();
+                }
+            }
+        }
+        //println!("{:?}", a);
+    }
+}
 
-// fn assert_maps_equivalent<K, V>(a: &HashSlabMap<K, V>, b: &HashMap<K, V>) -> bool
-// where
-//     K: Hash + Eq + Debug,
-//     V: Eq + Debug,
-// {
-//     assert_eq!(a.len(), b.len());
-//     assert_eq!(a.iter().next().is_some(), b.iter().next().is_some());
-//     for key in a.keys() {
-//         assert!(b.contains_key(key), "b does not contain {:?}", key);
-//     }
-//     for key in b.keys() {
-//         assert!(a.get(key).is_some(), "a does not contain {:?}", key);
-//     }
-//     for key in a.keys() {
-//         assert_eq!(a[key], b[key]);
-//     }
-//     true
-// }
+fn assert_maps_equivalent<K, V>(a: &HashSlabMap<K, V>, b: &HashMap<K, V>) -> bool
+where
+    K: Hash + Eq + Debug,
+    V: Eq + Debug,
+{
+    assert_eq!(a.len(), b.len());
+    assert_eq!(a.iter().next().is_some(), b.iter().next().is_some());
+    for key in a.keys() {
+        assert!(b.contains_key(key), "b does not contain {:?}", key);
+    }
+    for key in b.keys() {
+        assert!(a.get(key).is_some(), "a does not contain {:?}", key);
+    }
+    for key in a.keys() {
+        assert_eq!(a[key], b[key]);
+    }
+    true
+}
 
 quickcheck_limit! {
-    // fn operations_i8(ops: Large<Vec<Op<i8, i8>>>) -> bool {
-    //     let mut map = HashSlabMap::new();
-    //     let mut reference = HashMap::new();
-    //     do_ops(&ops, &mut map, &mut reference);
-    //     assert_maps_equivalent(&map, &reference)
-    // }
+    fn operations_i8(ops: Large<Vec<Op<i8, i8>>>) -> bool {
+        let mut map = HashSlabMap::new();
+        let mut reference = HashMap::new();
+        do_ops(&ops, &mut map, &mut reference);
+        assert_maps_equivalent(&map, &reference)
+    }
 
-    // fn operations_string(ops: Vec<Op<Alpha, i8>>) -> bool {
-    //     let mut map = HashSlabMap::new();
-    //     let mut reference = HashMap::new();
-    //     do_ops(&ops, &mut map, &mut reference);
-    //     assert_maps_equivalent(&map, &reference)
-    // }
+    fn operations_string(ops: Vec<Op<Alpha, i8>>) -> bool {
+        let mut map = HashSlabMap::new();
+        let mut reference = HashMap::new();
+        do_ops(&ops, &mut map, &mut reference);
+        assert_maps_equivalent(&map, &reference)
+    }
 
-    // fn keys_values(ops: Large<Vec<Op<i8, i8>>>) -> bool {
-    //     let mut map = HashSlabMap::new();
-    //     let mut reference = HashMap::new();
-    //     do_ops(&ops, &mut map, &mut reference);
-    //     let mut visit = HashSlabMap::new();
-    //     for (k, v) in map.keys().zip(map.values()) {
-    //         assert_eq!(&map[k], v);
-    //         assert!(!visit.contains_key(k));
-    //         visit.insert(*k, *v);
-    //     }
-    //     assert_eq!(visit.len(), reference.len());
-    //     true
-    // }
+    fn keys_values(ops: Large<Vec<Op<i8, i8>>>) -> bool {
+        let mut map = HashSlabMap::new();
+        let mut reference = HashMap::new();
+        do_ops(&ops, &mut map, &mut reference);
+        let mut visit = HashSlabMap::new();
+        for (k, v) in map.keys().zip(map.values()) {
+            assert_eq!(&map[k], v);
+            assert!(!visit.contains_key(k));
+            visit.insert(*k, *v);
+        }
+        assert_eq!(visit.len(), reference.len());
+        true
+    }
 
-    // fn keys_values_mut(ops: Large<Vec<Op<i8, i8>>>) -> bool {
-    //     let mut map = HashSlabMap::new();
-    //     let mut reference = HashMap::new();
-    //     do_ops(&ops, &mut map, &mut reference);
-    //     let mut visit = HashSlabMap::new();
-    //     let keys = Vec::from_iter(map.keys().copied());
-    //     for (k, v) in keys.iter().zip(map.values_mut()) {
-    //         assert_eq!(&reference[k], v);
-    //         assert!(!visit.contains_key(k));
-    //         visit.insert(*k, *v);
-    //     }
-    //     assert_eq!(visit.len(), reference.len());
-    //     true
-    // }
+    fn keys_values_mut(ops: Large<Vec<Op<i8, i8>>>) -> bool {
+        let mut map = HashSlabMap::new();
+        let mut reference = HashMap::new();
+        do_ops(&ops, &mut map, &mut reference);
+        let mut visit = HashSlabMap::new();
+        let keys = Vec::from_iter(map.keys().copied());
+        for (k, v) in keys.iter().zip(map.values_mut()) {
+            assert_eq!(&reference[k], v);
+            assert!(!visit.contains_key(k));
+            visit.insert(*k, *v);
+        }
+        assert_eq!(visit.len(), reference.len());
+        true
+    }
 
-    // fn equality(ops1: Vec<Op<i8, i8>>, removes: Vec<usize>) -> bool {
-    //     let mut map = HashSlabMap::new();
-    //     let mut reference = HashMap::new();
-    //     do_ops(&ops1, &mut map, &mut reference);
-    //     let mut ops2 = ops1.clone();
-    //     for &r in &removes {
-    //         if !ops2.is_empty() {
-    //             let i = r % ops2.len();
-    //             ops2.remove(i);
-    //         }
-    //     }
-    //     let mut map2 = HashSlabMapFnv::default();
-    //     let mut reference2 = HashMap::new();
-    //     do_ops(&ops2, &mut map2, &mut reference2);
-    //     assert_eq!(map == map2, reference == reference2);
-    //     true
-    // }
+    fn equality(ops1: Vec<Op<i8, i8>>, removes: Vec<usize>) -> bool {
+        let mut map = HashSlabMap::new();
+        let mut reference = HashMap::new();
+        do_ops(&ops1, &mut map, &mut reference);
+        let mut ops2 = ops1.clone();
+        for &r in &removes {
+            if !ops2.is_empty() {
+                let i = r % ops2.len();
+                ops2.remove(i);
+            }
+        }
+        let mut map2 = HashSlabMapFnv::default();
+        let mut reference2 = HashMap::new();
+        do_ops(&ops2, &mut map2, &mut reference2);
+        assert_eq!(map == map2, reference == reference2);
+        true
+    }
 
     // fn retain_ordered(keys: Large<Vec<i8>>, remove: Large<Vec<i8>>) -> () {
     //     let mut map = indexmap(keys.iter());
@@ -526,84 +315,6 @@ quickcheck_limit! {
     //     }
     //     // check the order
     //     itertools::assert_equal(map.keys(), initial_map.keys().filter(|&k| !remove_map.contains_key(k)));
-    // }
-
-    // fn sort_1(keyvals: Large<Vec<(i8, i8)>>) -> () {
-    //     let mut map: HashSlabMap<_, _> = HashSlabMap::from_iter(keyvals.to_vec());
-    //     let mut answer = keyvals.0;
-    //     answer.sort_by_key(|t| t.0);
-
-    //     // reverse dedup: Because HashSlabMap::from_iter keeps the last value for
-    //     // identical keys
-    //     answer.reverse();
-    //     answer.dedup_by_key(|t| t.0);
-    //     answer.reverse();
-
-    //     map.sort_by(|k1, _, k2, _| Ord::cmp(k1, k2));
-
-    //     // check it contains all the values it should
-    //     for &(key, val) in &answer {
-    //         assert_eq!(map[&key], val);
-    //     }
-
-    //     // check the order
-
-    //     let mapv = Vec::from_iter(map);
-    //     assert_eq!(answer, mapv);
-
-    // }
-
-    // fn reverse(keyvals: Large<Vec<(i8, i8)>>) -> () {
-    //     let mut map: HashSlabMap<_, _> = HashSlabMap::from_iter(keyvals.to_vec());
-
-    //     fn generate_answer(input: &Vec<(i8, i8)>) -> Vec<(i8, i8)> {
-    //         // to mimic what `HashSlabMap::from_iter` does:
-    //         // need to get (A) the unique keys in forward order, and (B) the
-    //         // last value of each of those keys.
-
-    //         // create (A): an iterable that yields the unique keys in ltr order
-    //         let mut seen_keys = HashSet::new();
-    //         let unique_keys_forward = input.iter().filter_map(move |(k, _)| {
-    //             if seen_keys.contains(k) { None }
-    //             else { seen_keys.insert(*k); Some(*k) }
-    //         });
-
-    //         // create (B): a mapping of keys to the last value seen for that key
-    //         // this is the same as reversing the input and taking the first
-    //         // value seen for that key!
-    //         let mut last_val_per_key = HashMap::new();
-    //         for &(k, v) in input.iter().rev() {
-    //             if !last_val_per_key.contains_key(&k) {
-    //                 last_val_per_key.insert(k, v);
-    //             }
-    //         }
-
-    //         // iterate over the keys in (A) in order, and match each one with
-    //         // the corresponding last value from (B)
-    //         let mut ans: Vec<_> = unique_keys_forward
-    //             .map(|k| (k, *last_val_per_key.get(&k).unwrap()))
-    //             .collect();
-
-    //         // finally, since this test is testing `.reverse()`, reverse the
-    //         // answer in-place
-    //         ans.reverse();
-
-    //         ans
-    //     }
-
-    //     let answer = generate_answer(&keyvals.0);
-
-    //     // perform the work
-    //     map.reverse();
-
-    //     // check it contains all the values it should
-    //     for &(key, val) in &answer {
-    //         assert_eq!(map[&key], val);
-    //     }
-
-    //     // check the order
-    //     let mapv = Vec::from_iter(map);
-    //     assert_eq!(answer, mapv);
     // }
 }
 

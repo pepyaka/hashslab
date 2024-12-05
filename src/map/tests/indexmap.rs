@@ -258,84 +258,84 @@ fn extend() {
     assert_eq!(vec![(1, 2), (3, 4), (5, 6)], result);
 }
 
-// #[test]
-// fn entry() {
-//     let mut map = HashSlabMap::new();
+#[test]
+fn entry() {
+    let mut map = HashSlabMap::new();
 
-//     map.insert(1, "1");
-//     map.insert(2, "2");
-//     {
-//         let e = map.entry(3);
-//         assert_eq!(e.index(), 2);
-//         let e = e.or_insert("3");
-//         assert_eq!(e, &"3");
-//     }
+    map.insert(1, "1");
+    map.insert(2, "2");
+    {
+        let e = map.entry(3);
+        assert_eq!(e.index(), 2);
+        let e = e.or_insert("3");
+        assert_eq!(e, &"3");
+    }
 
-//     let e = map.entry(2);
-//     assert_eq!(e.index(), 1);
-//     assert_eq!(e.key(), &2);
-//     match e {
-//         Entry::Occupied(ref e) => assert_eq!(e.get(), &"2"),
-//         Entry::Vacant(_) => panic!(),
-//     }
-//     assert_eq!(e.or_insert("4"), &"2");
-// }
+    let e = map.entry(2);
+    assert_eq!(e.index(), 1);
+    assert_eq!(e.key(), &2);
+    match e {
+        Entry::Occupied(ref e) => assert_eq!(e.get(), &"2"),
+        Entry::Vacant(_) => panic!(),
+    }
+    assert_eq!(e.or_insert("4"), &"2");
+}
 
-// #[test]
-// fn entry_and_modify() {
-//     let mut map = HashSlabMap::new();
+#[test]
+fn entry_and_modify() {
+    let mut map = HashSlabMap::new();
 
-//     map.insert(1, "1");
-//     map.entry(1).and_modify(|x| *x = "2");
-//     assert_eq!(Some(&"2"), map.get(&1));
+    map.insert(1, "1");
+    map.entry(1).and_modify(|x| *x = "2");
+    assert_eq!(Some(&"2"), map.get(&1));
 
-//     map.entry(2).and_modify(|x| *x = "doesn't exist");
-//     assert_eq!(None, map.get(&2));
-// }
+    map.entry(2).and_modify(|x| *x = "doesn't exist");
+    assert_eq!(None, map.get(&2));
+}
 
-// #[test]
-// fn entry_or_default() {
-//     let mut map = HashSlabMap::new();
+#[test]
+fn entry_or_default() {
+    let mut map = HashSlabMap::new();
 
-//     #[derive(Debug, PartialEq)]
-//     enum TestEnum {
-//         DefaultValue,
-//         NonDefaultValue,
-//     }
+    #[derive(Debug, PartialEq)]
+    enum TestEnum {
+        DefaultValue,
+        NonDefaultValue,
+    }
 
-//     impl Default for TestEnum {
-//         fn default() -> Self {
-//             TestEnum::DefaultValue
-//         }
-//     }
+    impl Default for TestEnum {
+        fn default() -> Self {
+            TestEnum::DefaultValue
+        }
+    }
 
-//     map.insert(1, TestEnum::NonDefaultValue);
-//     assert_eq!(&mut TestEnum::NonDefaultValue, map.entry(1).or_default());
+    map.insert(1, TestEnum::NonDefaultValue);
+    assert_eq!(&mut TestEnum::NonDefaultValue, map.entry(1).or_default());
 
-//     assert_eq!(&mut TestEnum::DefaultValue, map.entry(2).or_default());
-// }
+    assert_eq!(&mut TestEnum::DefaultValue, map.entry(2).or_default());
+}
 
-// #[test]
-// fn occupied_entry_key() {
-//     // These keys match hash and equality, but their addresses are distinct.
-//     let (k1, k2) = (&mut 1, &mut 1);
-//     let k1_ptr = k1 as *const i32;
-//     let k2_ptr = k2 as *const i32;
-//     assert_ne!(k1_ptr, k2_ptr);
+#[test]
+fn occupied_entry_key() {
+    // These keys match hash and equality, but their addresses are distinct.
+    let (k1, k2) = (&mut 1, &mut 1);
+    let k1_ptr = k1 as *const i32;
+    let k2_ptr = k2 as *const i32;
+    assert_ne!(k1_ptr, k2_ptr);
 
-//     let mut map = HashSlabMap::new();
-//     map.insert(k1, "value");
-//     match map.entry(k2) {
-//         Entry::Occupied(ref e) => {
-//             // `OccupiedEntry::key` should reference the key in the map,
-//             // not the key that was used to find the entry.
-//             let ptr = *e.key() as *const i32;
-//             assert_eq!(ptr, k1_ptr);
-//             assert_ne!(ptr, k2_ptr);
-//         }
-//         Entry::Vacant(_) => panic!(),
-//     }
-// }
+    let mut map = HashSlabMap::new();
+    map.insert(k1, "value");
+    match map.entry(k2) {
+        Entry::Occupied(ref e) => {
+            // `OccupiedEntry::key` should reference the key in the map,
+            // not the key that was used to find the entry.
+            let ptr = *e.key() as *const i32;
+            assert_eq!(ptr, k1_ptr);
+            assert_ne!(ptr, k2_ptr);
+        }
+        Entry::Vacant(_) => panic!(),
+    }
+}
 
 // #[test]
 // fn get_index_entry() {
