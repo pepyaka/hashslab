@@ -5,7 +5,7 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-use hashbrown::{Equivalent, HashMap};
+use hashbrown::{hash_map, Equivalent, HashMap};
 use slab::Slab;
 
 use crate::{EntryBuilder, TryReserveError};
@@ -23,6 +23,9 @@ use iter::{IntoFullIter, Iter, IterFull, IterFullMut, IterMut};
 
 mod drain;
 use drain::{Drain, DrainFull};
+
+mod entry;
+pub use entry::{Entry, OccupiedEntry, VacantEntry};
 
 #[cfg(test)]
 mod tests;
@@ -394,6 +397,37 @@ where
         self.map
             .remove_entry(&RawHash::new(hash_value, index))
             .map(|(KeyEntry { key, .. }, value)| (key, value))
+    }
+
+    /// Gets the given key's corresponding entry in the map for in-place manipulation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hashbrown::HashMap;
+    ///
+    /// let mut letters = HashMap::new();
+    ///
+    /// for ch in "a short treatise on fungi".chars() {
+    ///     let counter = letters.entry(ch).or_insert(0);
+    ///     *counter += 1;
+    /// }
+    ///
+    /// assert_eq!(letters[&'s'], 2);
+    /// assert_eq!(letters[&'t'], 3);
+    /// assert_eq!(letters[&'u'], 1);
+    /// assert_eq!(letters.get(&'y'), None);
+    /// ```
+    pub fn entry(&mut self, key: K) -> Entry<'_, K, V, S> {
+        let key_entry = EntryBuilder::new(key, self.map.hasher()).key_entry(self.slab.vacant_key());
+        match self.map.entry(key_entry) {
+            hash_map::Entry::Occupied(occupied_entry) => {
+                Entry::Occupied(OccupiedEntry::new(occupied_entry, &mut self.slab))
+            }
+            hash_map::Entry::Vacant(vacant_entry) => {
+                Entry::Vacant(VacantEntry::new(vacant_entry, &mut self.slab))
+            }
+        }
     }
 }
 

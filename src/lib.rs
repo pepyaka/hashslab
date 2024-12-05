@@ -88,7 +88,7 @@ impl<K: Hash> Hash for KeyQuery<K> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Clone)]
 struct KeyEntry<K> {
     key: K,
     hash_value: u64,
@@ -111,6 +111,14 @@ impl<K: Hash> Hash for KeyEntry<K> {
         state.write_u64(self.hash_value);
     }
 }
+
+impl<K: PartialEq> PartialEq for KeyEntry<K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key
+    }
+}
+
+impl<K: Eq> Eq for KeyEntry<K> {}
 
 impl<'q, Q: ?Sized, K> Equivalent<KeyEntry<K>> for KeyQuery<&'q Q>
 where

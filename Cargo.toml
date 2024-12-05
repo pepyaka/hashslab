@@ -30,6 +30,10 @@ name = "remove"
 harness = false
 
 [[bench]]
+name = "entry"
+harness = false
+
+[[bench]]
 name = "iai"
 harness = false
 bench = false
