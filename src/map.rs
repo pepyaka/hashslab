@@ -47,6 +47,28 @@ impl<K, V> HashSlabMap<K, V> {
     pub fn with_capacity(n: usize) -> Self {
         Self::with_capacity_and_hasher(n, <_>::default())
     }
+
+    /// Returns the index of the next vacant entry.
+    ///
+    /// This function returns the index of the vacant entry which  will be used
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::*;
+    /// let mut map = HashSlabMap::new();
+    /// assert_eq!(map.vacant_index(), 0);
+    ///
+    /// map.insert(0, ());
+    /// assert_eq!(map.vacant_index(), 1);
+    ///
+    /// map.insert(1, ());
+    /// map.remove(&0);
+    /// assert_eq!(map.vacant_index(), 0);
+    /// ```
+    pub fn vacant_index(&self) -> usize {
+        self.slab.vacant_key()
+    }
 }
 
 impl<K, V, S> HashSlabMap<K, V, S> {
@@ -172,8 +194,6 @@ impl<K, V, S> HashSlabMap<K, V, S> {
         Drain::new(self.drain_full())
     }
 }
-
-impl<K, V, S> HashSlabMap<K, V, S> where S: BuildHasher {}
 
 impl<K, V, S> HashSlabMap<K, V, S>
 where
@@ -309,6 +329,17 @@ where
             .map(|(KeyEntry { index, .. }, _)| *index)
     }
 
+    /// Returns the index-key-value triple corresponding to the supplied key, with a mutable reference to value.
+    pub fn get_full_mut<Q>(&mut self, key: &Q) -> Option<(usize, &K, &mut V)>
+    where
+        Q: ?Sized + Hash + Equivalent<K>,
+    {
+        let key_query = KeyQuery(key);
+        self.map
+            .get_key_value_mut(&key_query)
+            .map(|(KeyEntry { key, index, .. }, value)| (*index, key, value))
+    }
+
     /// Returns a mutable reference to the value corresponding to the key.
     ///
     /// The key may be any borrowed form of the map's key type, but
@@ -428,6 +459,43 @@ where
                 Entry::Vacant(VacantEntry::new(vacant_entry, &mut self.slab))
             }
         }
+    }
+
+    /// Returns `true` if the map contains a value for the specified key.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    /// let mut map = HashSlabMap::new();
+    /// map.insert(1, "a");
+    /// assert_eq!(map.contains_key(&1), true);
+    /// assert_eq!(map.contains_key(&2), false);
+    /// ```
+    pub fn contains_key<Q>(&self, k: &Q) -> bool
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        self.map.contains_key(&KeyQuery(k))
+    }
+
+    /// Return `true` if a value is associated with the given key.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    /// let mut map = HashSlabMap::new();
+    ///
+    /// let idx = map.insert_full("hello", ()).0;
+    /// assert!(map.contains_index(idx));
+    ///
+    /// map.remove_index(idx);
+    ///
+    /// assert!(!map.contains_index(idx));
+    /// ```
+    pub fn contains_index(&self, index: usize) -> bool {
+        self.slab.contains(index)
     }
 }
 
@@ -640,6 +708,39 @@ where
     /// New keys are inserted in the order they appear in the sequence. If
     /// equivalents of a key occur more than once, the last corresponding value
     /// prevails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hashslab::HashSlabMap;
+    ///
+    /// let mut map = HashSlabMap::new();
+    /// map.insert(1, 100);
+    ///
+    /// let some_iter = [(1, 1), (2, 2)].into_iter();
+    /// map.extend(some_iter);
+    /// // Replace values with existing keys with new values returned from the iterator.
+    /// // So that the map.get(&1) doesn't return Some(&100).
+    /// assert_eq!(map.get(&1), Some(&1));
+    ///
+    /// let some_vec: Vec<_> = vec![(3, 3), (4, 4)];
+    /// map.extend(some_vec);
+    ///
+    /// let some_arr = [(5, 5), (6, 6)];
+    /// map.extend(some_arr);
+    /// let old_map_len = map.len();
+    ///
+    /// // You can also extend from another HashSlabMap
+    /// let mut new_map = HashSlabMap::new();
+    /// new_map.extend(map);
+    /// assert_eq!(new_map.len(), old_map_len);
+    ///
+    /// let mut vec: Vec<_> = new_map.into_iter().collect();
+    /// // The `IntoIter` iterator produces items in arbitrary order, so the
+    /// // items must be sorted to test them against a sorted array.
+    /// vec.sort_unstable();
+    /// assert_eq!(vec, [(1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6)]);
+    /// ```
     fn extend<I: IntoIterator<Item = (K, V)>>(&mut self, iterable: I) {
         // (Note: this is a copy of `std`/`hashbrown`'s reservation logic.)
         // Keys may be already present or show multiple times in the iterator.
@@ -670,6 +771,51 @@ where
     /// See the first extend method for more details.
     fn extend<I: IntoIterator<Item = (&'a K, &'a V)>>(&mut self, iterable: I) {
         self.extend(iterable.into_iter().map(|(&key, &value)| (key, value)));
+    }
+}
+
+/// Inserts all new key-values from the iterator and replaces values with existing
+/// keys with new values returned from the iterator.
+impl<'a, K, V, S> Extend<&'a (K, V)> for HashSlabMap<K, V, S>
+where
+    K: Eq + Hash + Copy,
+    V: Copy,
+    S: BuildHasher,
+{
+    /// Inserts all new key-values from the iterator to existing `HashSlabMap<K, V, S, A>`.
+    /// Replace values with existing keys with new values returned from the iterator.
+    /// The keys and values must implement [`Copy`] trait.
+    ///
+    /// [`Copy`]: https://doc.rust-lang.org/core/marker/trait.Copy.html
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hashslab::HashSlabMap;
+    /// let mut map = HashSlabMap::new();
+    /// map.insert(1, 100);
+    ///
+    /// let arr = [(1, 1), (2, 2)];
+    /// let some_iter = arr.iter();
+    /// map.extend(some_iter);
+    /// // Replace values with existing keys with new values returned from the iterator.
+    /// // So that the map.get(&1) doesn't return Some(&100).
+    /// assert_eq!(map.get(&1), Some(&1));
+    ///
+    /// let some_vec: Vec<_> = vec![(3, 3), (4, 4)];
+    /// map.extend(&some_vec);
+    ///
+    /// let some_arr = [(5, 5), (6, 6)];
+    /// map.extend(&some_arr);
+    ///
+    /// let mut vec: Vec<_> = map.into_iter().collect();
+    /// // The `IntoIter` iterator produces items in arbitrary order, so the
+    /// // items must be sorted to test them against a sorted array.
+    /// vec.sort_unstable();
+    /// assert_eq!(vec, [(1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6)]);
+    /// ```
+    fn extend<T: IntoIterator<Item = &'a (K, V)>>(&mut self, iter: T) {
+        self.extend(iter.into_iter().map(|&(key, value)| (key, value)));
     }
 }
 
