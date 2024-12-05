@@ -1,6 +1,6 @@
 [package]
 name = "hashslab"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 documentation = "https://docs.rs/hashslab/"
 repository = "https://github.com/pepyaka/hashslab"
@@ -30,14 +30,18 @@ name = "remove"
 harness = false
 
 [[bench]]
+name = "entry"
+harness = false
+
+[[bench]]
 name = "iai"
 harness = false
 bench = false
 
 [dependencies]
 slab = "0.4.9"
-hashbrown = "0.15.1"
-thiserror = "2.0.3"
+hashbrown = "0.15.2"
+thiserror = "2.0.4"
 
 [dev-dependencies]
 itertools = "0.13"
