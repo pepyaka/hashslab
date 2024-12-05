@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{hash::Hash, iter::FusedIterator};
+use std::iter::FusedIterator;
 
 use hashbrown::hash_map;
 
@@ -45,6 +45,10 @@ impl<'a, K, V> Iterator for IterFull<'a, K, V> {
         self.iter
             .next()
             .map(|(KeyEntry { key, index, .. }, value)| (*index, key, value))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
     }
 }
 
@@ -93,6 +97,10 @@ impl<'a, K, V> Iterator for Iter<'a, K, V> {
     fn next(&mut self) -> Option<Self::Item> {
         self.iter_full.next().map(|(_, k, v)| (k, v))
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter_full.size_hint()
+    }
 }
 
 impl<K, V> ExactSizeIterator for Iter<'_, K, V> {
@@ -115,10 +123,6 @@ impl<'a, K, V> IterFullMut<'a, K, V> {
     pub(super) fn new(iter_mut: hash_map::IterMut<'a, KeyEntry<K>, V>) -> Self {
         Self { iter_mut }
     }
-
-    fn len(&self) -> usize {
-        self.iter_mut.len()
-    }
 }
 
 impl<K: fmt::Debug, V: fmt::Debug> fmt::Debug for IterFullMut<'_, K, V> {
@@ -129,16 +133,23 @@ impl<K: fmt::Debug, V: fmt::Debug> fmt::Debug for IterFullMut<'_, K, V> {
     }
 }
 
-impl<'a, K, V> Iterator for IterFullMut<'a, K, V>
-where
-    K: Hash + Eq,
-{
+impl<'a, K, V> Iterator for IterFullMut<'a, K, V> {
     type Item = (usize, &'a K, &'a mut V);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter_mut
             .next()
             .map(|(KeyEntry { index, key, .. }, value)| (*index, key, value))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter_mut.size_hint()
+    }
+}
+
+impl<K, V> ExactSizeIterator for IterFullMut<'_, K, V> {
+    fn len(&self) -> usize {
+        self.iter_mut.len()
     }
 }
 
@@ -164,14 +175,21 @@ impl<K: fmt::Debug, V: fmt::Debug> fmt::Debug for IterMut<'_, K, V> {
     }
 }
 
-impl<'a, K, V> Iterator for IterMut<'a, K, V>
-where
-    K: Hash + Eq,
-{
+impl<'a, K, V> Iterator for IterMut<'a, K, V> {
     type Item = (&'a K, &'a mut V);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter_full_mut.next().map(|(_, k, v)| (k, v))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter_full_mut.size_hint()
+    }
+}
+
+impl<K, V> ExactSizeIterator for IterMut<'_, K, V> {
+    fn len(&self) -> usize {
+        self.iter_full_mut.len()
     }
 }
 
