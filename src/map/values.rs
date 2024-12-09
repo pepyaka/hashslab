@@ -1,11 +1,6 @@
-use core::fmt;
-use std::iter::FusedIterator;
+use core::{fmt, iter::FusedIterator};
 
-use hashbrown::hash_map;
-
-use crate::KeyEntry;
-
-use super::iter::{IntoIter, IterFull};
+use super::iter::{IntoIter, IterFull, IterFullMut};
 
 /// An iterator over the values of an [`HashSlabMap`].
 ///
@@ -22,7 +17,7 @@ impl<'a, K, V> Values<'a, K, V> {
 }
 
 // https://github.com/rust-lang/rust/issues/26925
-impl<'a, K, V> Clone for Values<'a, K, V> {
+impl<K, V> Clone for Values<'_, K, V> {
     fn clone(&self) -> Self {
         Values {
             iter_full: self.iter_full.clone(),
@@ -57,12 +52,12 @@ impl<K, V> FusedIterator for Values<'_, K, V> {}
 /// This `struct` is created by the [`HashSlabMap::values_mut`] method.
 /// See its documentation for more.
 pub struct ValuesMut<'a, K, V> {
-    values_mut: hash_map::ValuesMut<'a, KeyEntry<K>, V>,
+    iter_full_mut: IterFullMut<'a, K, V>,
 }
 
 impl<'a, K, V> ValuesMut<'a, K, V> {
-    pub(crate) fn new(values_mut: hash_map::ValuesMut<'a, KeyEntry<K>, V>) -> Self {
-        Self { values_mut }
+    pub fn new(iter_full_mut: IterFullMut<'a, K, V>) -> Self {
+        Self { iter_full_mut }
     }
 }
 
@@ -78,13 +73,13 @@ impl<'a, K, V> Iterator for ValuesMut<'a, K, V> {
     type Item = &'a mut V;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.values_mut.next()
+        self.iter_full_mut.next().map(|(_, _, value)| value)
     }
 }
 
 impl<K, V> ExactSizeIterator for ValuesMut<'_, K, V> {
     fn len(&self) -> usize {
-        self.values_mut.len()
+        self.iter_full_mut.len()
     }
 }
 

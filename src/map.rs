@@ -5,12 +5,12 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-use hashbrown::{hash_map, Equivalent, HashMap};
+use hashbrown::{hash_table, Equivalent, HashTable};
 use slab::Slab;
 
-use crate::{EntryBuilder, TryReserveError};
+use crate::{TryReserveError, ValueData};
 
-use super::{HashSlabHasherBuilder, KeyEntry, KeyQuery, RawHash};
+use super::KeyData;
 
 mod keys;
 use keys::{FullKeys, Indices, IntoKeys, Keys};
@@ -31,8 +31,9 @@ pub use entry::{Entry, OccupiedEntry, VacantEntry};
 mod tests;
 
 pub struct HashSlabMap<K, V, S = RandomState> {
-    map: HashMap<KeyEntry<K>, V, HashSlabHasherBuilder<S>>,
-    slab: Slab<u64>,
+    table: HashTable<KeyData<K>>,
+    slab: Slab<ValueData<V>>,
+    builder: S,
 }
 
 impl<K, V> HashSlabMap<K, V> {
@@ -74,36 +75,72 @@ impl<K, V> HashSlabMap<K, V> {
 impl<K, V, S> HashSlabMap<K, V, S> {
     /// Create a new map with `hash_builder` and capacity for `n` entries.
     #[inline]
-    pub fn with_capacity_and_hasher(n: usize, hash_builder: S) -> Self {
-        let hasher_buider = HashSlabHasherBuilder(hash_builder);
+    pub fn with_capacity_and_hasher(n: usize, builder: S) -> Self {
         Self {
-            map: HashMap::with_capacity_and_hasher(n, hasher_buider),
+            table: HashTable::with_capacity(n),
             slab: Slab::with_capacity(n),
+            builder,
         }
     }
 
     /// Create a new map with `hash_builder`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    /// let s = std::hash::RandomState::new();
+    /// let mut map = HashSlabMap::with_hasher(s);
+    /// assert_eq!(map.len(), 0);
+    /// assert_eq!(map.capacity(), 0);
+    ///
+    /// map.insert(1, 2);
+    /// ```
     pub fn with_hasher(hash_builder: S) -> Self {
         Self::with_capacity_and_hasher(0, hash_builder)
     }
 
     /// Return the number of values the hashslab can store without reallocating.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    /// let map = HashSlabMap::<(), ()>::with_capacity(100);
+    /// assert!(map.capacity() >= 100);
+    /// ```
     pub fn capacity(&self) -> usize {
-        self.map.capacity().min(self.slab.capacity())
+        self.table.capacity().min(self.slab.capacity())
     }
 
-    /// Returns a reference to the hashset's [`BuildHasher`].
+    /// Returns a reference to the map's [`BuildHasher`].
     ///
     /// [`BuildHasher`]: https://doc.rust-lang.org/std/hash/trait.BuildHasher.html
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    /// use std::hash::{RandomState, BuildHasherDefault};
+    /// use fnv::{FnvBuildHasher, FnvHasher};
+    ///
+    /// let map = HashSlabMap::<(), ()>::new();
+    /// let hasher: &RandomState = map.hasher();
+    ///
+    /// let s = FnvBuildHasher::default();
+    /// let mut map = HashSlabMap::with_hasher(s);
+    /// map.insert(1, 2);
+    /// let hasher: &BuildHasherDefault<FnvHasher> = map.hasher();
+    /// ```
     pub fn hasher(&self) -> &S {
-        &self.map.hasher().0
+        &self.builder
     }
 
     /// Return the number of key-value pairs in the map.
     #[inline]
     pub fn len(&self) -> usize {
-        debug_assert_eq!(self.map.len(), self.slab.len());
-        self.map.len()
+        debug_assert_eq!(self.table.len(), self.slab.len());
+        self.table.len()
     }
 
     /// Returns true if the map contains no elements.
@@ -114,20 +151,17 @@ impl<K, V, S> HashSlabMap<K, V, S> {
 
     /// An iterator over the index-key-value triples in arbitrary order.
     pub fn iter_full(&self) -> IterFull<'_, K, V> {
-        IterFull::new(self.map.iter())
+        IterFull::new(self.table.iter(), &self.slab)
     }
 
     /// An iterator visiting all key-value pairs in arbitrary order.
     pub fn iter(&self) -> Iter<'_, K, V> {
-        Iter::new(self.map.iter())
+        Iter::new(self.iter_full())
     }
 
     /// An iterator visiting all index-key-value triple in arbitrary order, with mutable references to the values.
-    pub fn iter_full_mut(&mut self) -> IterFullMut<'_, K, V>
-    where
-        K: Clone,
-    {
-        IterFullMut::new(self.map.iter_mut())
+    pub fn iter_full_mut(&mut self) -> IterFullMut<'_, K, V> {
+        IterFullMut::new(self.table.iter(), &mut self.slab)
     }
 
     /// An iterator visiting all key-value pairs in arbitrary order, with mutable references to the values.
@@ -140,53 +174,128 @@ impl<K, V, S> HashSlabMap<K, V, S> {
 
     /// Return an owning iterator over the index-key-value triples. The iterator element type is [`(usize, K, V)`].
     pub fn into_full_iter(self) -> IntoFullIter<K, V> {
-        IntoFullIter::new(self.map.into_iter())
+        IntoFullIter::new(self.table.into_iter(), self.slab)
     }
 
     /// An iterator visiting index-key pairs in arbitrary order. The iterator element type is [`(usize, &'a K)`].
-    pub fn full_keys(&self) -> FullKeys<'_, K, V> {
-        FullKeys::new(self.map.keys())
+    pub fn full_keys(&self) -> FullKeys<'_, K> {
+        FullKeys::new(self.table.iter())
     }
 
     /// An iterator visiting all keys in arbitrary order. The iterator element type is [`&'a K`].
-    pub fn keys(&self) -> Keys<'_, K, V> {
+    pub fn keys(&self) -> Keys<'_, K> {
         Keys::new(self.full_keys())
     }
 
     /// Return an owning iterator over the keys of the map, in their order
-    pub fn into_keys(self) -> IntoKeys<K, V> {
-        IntoKeys::new(self.map.into_keys())
+    pub fn into_keys(self) -> IntoKeys<K> {
+        IntoKeys::new(self.table.into_iter())
     }
 
-    /// Return an iterator over the values of the map, in their order
+    /// An iterator over indices in arbitrary order. The iterator element type is [`usize`].
+    pub fn indices(&self) -> Indices<'_, K> {
+        Indices::new(self.table.iter())
+    }
+
+    /// An iterator visiting all values in arbitrary order. The iterator element type is `&'a V`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    /// let mut map = HashSlabMap::new();
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    /// assert_eq!(map.len(), 3);
+    /// let mut vec: Vec<i32> = Vec::new();
+    ///
+    /// for val in map.values() {
+    ///     println!("{}", val);
+    ///     vec.push(*val);
+    /// }
+    ///
+    /// // The `Values` iterator produces values in arbitrary order, so the
+    /// // values must be sorted to test them against a sorted array.
+    /// vec.sort_unstable();
+    /// assert_eq!(vec, [1, 2, 3]);
+    ///
+    /// assert_eq!(map.len(), 3);
+    /// ```
     pub fn values(&self) -> Values<'_, K, V> {
         Values::new(self.iter_full())
     }
 
-    /// Return an iterator that allows modifying each value.
+    /// An iterator visiting all values mutably in arbitrary order. The iterator element type is `&'a mut V`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    ///
+    /// let mut map = HashSlabMap::new();
+    ///
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    ///
+    /// for val in map.values_mut() {
+    ///     *val = *val + 10;
+    /// }
+    ///
+    /// assert_eq!(map.len(), 3);
+    /// let mut vec: Vec<i32> = Vec::new();
+    ///
+    /// for val in map.values() {
+    ///     println!("{}", val);
+    ///     vec.push(*val);
+    /// }
+    ///
+    /// // The `Values` iterator produces values in arbitrary order, so the
+    /// // values must be sorted to test them against a sorted array.
+    /// vec.sort_unstable();
+    /// assert_eq!(vec, [11, 12, 13]);
+    ///
+    /// assert_eq!(map.len(), 3);
+    /// ```
     pub fn values_mut(&mut self) -> ValuesMut<'_, K, V> {
-        ValuesMut::new(self.map.values_mut())
+        ValuesMut::new(self.iter_full_mut())
     }
 
-    /// Return an owning iterator over the values of the map, in their order
+    /// Creates a consuming iterator visiting all the values in arbitrary order.
+    /// The map cannot be used after calling this.
+    /// The iterator element type is `V`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hashslab::HashSlabMap;
+    ///
+    /// let mut map = HashSlabMap::new();
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    ///
+    /// let mut vec: Vec<i32> = map.into_values().collect();
+    ///
+    /// // The `IntoValues` iterator produces values in arbitrary order, so
+    /// // the values must be sorted to test them against a sorted array.
+    /// vec.sort_unstable();
+    /// assert_eq!(vec, [1, 2, 3]);
+    /// ```
     pub fn into_values(self) -> IntoValues<K, V> {
         IntoValues::new(self.into_iter())
     }
 
-    /// An iterator over indices in arbitrary order. The iterator element type is [`usize`].
-    pub fn indices(&self) -> Indices<'_, K, V> {
-        Indices::new(self.map.keys())
-    }
-
     /// Remove all entries in the map, while preserving its capacity.
     pub fn clear(&mut self) {
-        self.map.clear();
+        self.table.clear();
         self.slab.clear();
     }
 
     /// Clears the map, returning all index-key-value triples as an iterator. Keeps the allocated memory for reuse.
     pub fn drain_full(&mut self) -> DrainFull<'_, K, V> {
-        DrainFull::new(self.map.drain(), &mut self.slab)
+        DrainFull::new(self.table.drain(), &mut self.slab)
     }
 
     /// Clears the map, returning all key-value pairs as an iterator. Keeps the allocated memory for reuse.
@@ -202,13 +311,14 @@ where
 {
     /// Reserve capacity for `additional` more key-value pairs.
     pub fn reserve(&mut self, additional: usize) {
-        self.map.reserve(additional);
+        self.table.reserve(additional, make_hasher(&self.builder));
         self.slab.reserve(additional);
     }
 
     /// Try to reserve capacity for `additional` more key-value pairs.
     pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
-        self.map.try_reserve(additional)?;
+        self.table
+            .try_reserve(additional, make_hasher(&self.builder))?;
         let capacity = self.slab.capacity();
         if (capacity + additional) <= isize::MAX as usize {
             self.slab.reserve(additional);
@@ -223,7 +333,7 @@ where
 
     /// Shrink the capacity of the map as much as possible.
     pub fn shrink_to_fit(&mut self) {
-        self.map.shrink_to_fit();
+        self.table.shrink_to_fit(make_hasher(&self.builder));
         self.slab.shrink_to_fit();
     }
 
@@ -248,15 +358,21 @@ where
     /// If no equivalent key existed in the map: the new key-value pair is
     /// inserted, last in order, and `(index, None)` is returned.
     pub fn insert_full(&mut self, key: K, value: V) -> (usize, Option<V>) {
-        let query = KeyQuery(&key);
-        if let Some((KeyEntry { index, .. }, old)) = self.map.get_key_value_mut(&query) {
-            let value = mem::replace(old, value);
-            (*index, Some(value))
-        } else {
-            let builder = EntryBuilder::new(key, self.map.hasher());
-            let index = self.slab.insert(builder.hash_value);
-            self.map.insert(builder.key_entry(index), value);
-            (index, None)
+        let hash = self.builder.hash_one(&key);
+        match self
+            .table
+            .entry(hash, |e| e.key == key, make_hasher(&self.builder))
+        {
+            hash_table::Entry::Occupied(entry) => {
+                let i = entry.get().index;
+                (i, Some(mem::replace(&mut self.slab[i].value, value)))
+            }
+            hash_table::Entry::Vacant(entry) => {
+                let index = self.slab.insert(ValueData::new(value, hash));
+                entry.insert(KeyData::new(key, index));
+                debug_assert_eq!(self.table.len(), self.slab.len());
+                (index, None)
+            }
         }
     }
 
@@ -265,10 +381,8 @@ where
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        let query = KeyQuery(key);
-        self.map
-            .get_key_value(&query)
-            .map(|(KeyEntry { index, key, .. }, value)| (*index, key, value))
+        self.get_key_index(key)
+            .map(|(key, index)| (index, key, &self.slab[index].value))
     }
 
     /// Return references to the key-value pair stored for `key`, if it is present, else `None`.
@@ -307,15 +421,15 @@ where
 
     /// Get a key-value pair by index
     pub fn get_index(&self, index: usize) -> Option<(&K, &V)> {
-        let hash_value = self.slab.get(index)?;
-        self.map
-            .get_key_value(&RawHash::new(*hash_value, index))
-            .map(|(KeyEntry { key, .. }, value)| (key, value))
+        let ValueData { value, hash } = self.slab.get(index)?;
+        self.table
+            .find(*hash, |e| e.index == index)
+            .map(|KeyData { key, .. }| (key, value))
     }
 
     /// Get a value by index.
     pub fn get_index_value(&self, index: usize) -> Option<&V> {
-        self.get_index(index).map(|(_, value)| value)
+        self.slab.get(index).map(|ValueData { value, .. }| value)
     }
 
     /// Return item index, if it exists in the map
@@ -323,10 +437,7 @@ where
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        let query = KeyQuery(key);
-        self.map
-            .get_key_value(&query)
-            .map(|(KeyEntry { index, .. }, _)| *index)
+        self.get_key_index(key).map(|(_, index)| index)
     }
 
     /// Returns the index-key-value triple corresponding to the supplied key, with a mutable reference to value.
@@ -334,10 +445,14 @@ where
     where
         Q: ?Sized + Hash + Equivalent<K>,
     {
-        let key_query = KeyQuery(key);
-        self.map
-            .get_key_value_mut(&key_query)
-            .map(|(KeyEntry { key, index, .. }, value)| (*index, key, value))
+        if self.table.is_empty() {
+            None
+        } else {
+            let hash = self.builder.hash_one(key);
+            self.table
+                .find(hash, |e| key.equivalent(&e.key))
+                .map(|KeyData { index, key, .. }| (*index, key, &mut self.slab[*index].value))
+        }
     }
 
     /// Returns a mutable reference to the value corresponding to the key.
@@ -367,8 +482,7 @@ where
     where
         Q: ?Sized + Hash + Equivalent<K>,
     {
-        let query = KeyQuery(key);
-        self.map.get_mut(&query)
+        self.get_full_mut(key).map(|(_, _, value)| value)
     }
 
     /// Returns key reference and mutable reference to the value corresponding to the index.
@@ -386,10 +500,10 @@ where
     /// assert_eq!(map.get_index_mut(1), None);
     /// ```
     pub fn get_index_mut(&mut self, index: usize) -> Option<(&K, &mut V)> {
-        let hash_value = self.slab.get(index)?;
-        self.map
-            .get_key_value_mut(&RawHash::new(*hash_value, index))
-            .map(|(KeyEntry { key, .. }, value)| (key, value))
+        let ValueData { value, hash } = self.slab.get_mut(index)?;
+        self.table
+            .find(*hash, |e| e.index == index)
+            .map(|KeyData { key, .. }| (key, value))
     }
 
     /// Remove the key-value pair equivalent to `key` and return its value.
@@ -413,21 +527,27 @@ where
     where
         Q: ?Sized + Hash + Equivalent<K>,
     {
-        let query = KeyQuery(key);
-        self.map
-            .remove_entry(&query)
-            .map(|(KeyEntry { index, key, .. }, value)| {
-                self.slab.remove(index);
+        let hash = self.builder.hash_one(key);
+        self.table
+            .find_entry(hash, |e| key.equivalent(&e.key))
+            .ok()
+            .map(|entry| {
+                let (KeyData { key, index, .. }, _) = entry.remove();
+                let ValueData { value, .. } = self.slab.remove(index);
                 (index, key, value)
             })
     }
 
     /// Remove the key-value pair by index
     pub fn remove_index(&mut self, index: usize) -> Option<(K, V)> {
-        let hash_value = self.slab.try_remove(index)?;
-        self.map
-            .remove_entry(&RawHash::new(hash_value, index))
-            .map(|(KeyEntry { key, .. }, value)| (key, value))
+        let ValueData { value, hash } = self.slab.try_remove(index)?;
+        self.table
+            .find_entry(hash, |e| e.index == index)
+            .ok()
+            .map(|entry| {
+                let (KeyData { key, .. }, _) = entry.remove();
+                (key, value)
+            })
     }
 
     /// Gets the given key's corresponding entry in the map for in-place manipulation.
@@ -435,9 +555,8 @@ where
     /// # Examples
     ///
     /// ```
-    /// use hashbrown::HashMap;
-    ///
-    /// let mut letters = HashMap::new();
+    /// # use hashslab::HashSlabMap;
+    /// let mut letters = HashSlabMap::new();
     ///
     /// for ch in "a short treatise on fungi".chars() {
     ///     let counter = letters.entry(ch).or_insert(0);
@@ -449,14 +568,26 @@ where
     /// assert_eq!(letters[&'u'], 1);
     /// assert_eq!(letters.get(&'y'), None);
     /// ```
-    pub fn entry(&mut self, key: K) -> Entry<'_, K, V, S> {
-        let key_entry = EntryBuilder::new(key, self.map.hasher()).key_entry(self.slab.vacant_key());
-        match self.map.entry(key_entry) {
-            hash_map::Entry::Occupied(occupied_entry) => {
+    pub fn entry(&mut self, key: K) -> Entry<'_, K, V> {
+        // let key_entry = EntryBuilder::new(key, self.map.hasher()).key_entry(self.slab.vacant_key());
+        // match self.table.entry(key) {
+        //     hash_table::Entry::Occupied(occupied_entry) => {
+        //         Entry::Occupied(OccupiedEntry::new(occupied_entry, &mut self.slab))
+        //     }
+        //     hash_table::Entry::Vacant(vacant_entry) => {
+        //         Entry::Vacant(VacantEntry::new(vacant_entry, &mut self.slab))
+        //     }
+        // }
+        let hash = self.builder.hash_one(&key);
+        match self
+            .table
+            .entry(hash, |e| e.key == key, make_hasher(&self.builder))
+        {
+            hash_table::Entry::Occupied(occupied_entry) => {
                 Entry::Occupied(OccupiedEntry::new(occupied_entry, &mut self.slab))
             }
-            hash_map::Entry::Vacant(vacant_entry) => {
-                Entry::Vacant(VacantEntry::new(vacant_entry, &mut self.slab))
+            hash_table::Entry::Vacant(vacant_entry) => {
+                Entry::Vacant(VacantEntry::new(vacant_entry, &mut self.slab, key, hash))
             }
         }
     }
@@ -472,11 +603,12 @@ where
     /// assert_eq!(map.contains_key(&1), true);
     /// assert_eq!(map.contains_key(&2), false);
     /// ```
-    pub fn contains_key<Q>(&self, k: &Q) -> bool
+    pub fn contains_key<Q>(&self, key: &Q) -> bool
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        self.map.contains_key(&KeyQuery(k))
+        let hash = self.builder.hash_one(key);
+        self.table.find(hash, |e| key.equivalent(&e.key)).is_some()
     }
 
     /// Return `true` if a value is associated with the given key.
@@ -499,12 +631,31 @@ where
     }
 }
 
+// Private methods
+impl<K, V, S> HashSlabMap<K, V, S> {
+    fn get_key_index<Q>(&self, key: &Q) -> Option<(&K, usize)>
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+        S: BuildHasher,
+    {
+        if self.table.is_empty() {
+            None
+        } else {
+            let hash = self.builder.hash_one(key);
+            self.table
+                .find(hash, |e| key.equivalent(&e.key))
+                .map(|KeyData { index, key, .. }| (key, *index))
+        }
+    }
+}
+
 // https://github.com/rust-lang/rust/issues/26925
 impl<K: Clone, V: Clone, S: Clone> Clone for HashSlabMap<K, V, S> {
     fn clone(&self) -> Self {
         Self {
-            map: self.map.clone(),
+            table: self.table.clone(),
             slab: self.slab.clone(),
+            builder: self.builder.clone(),
         }
     }
 }
@@ -879,4 +1030,13 @@ where
     V: Eq,
     S: BuildHasher,
 {
+}
+
+#[inline]
+pub(crate) fn make_hasher<K, S>(hash_builder: &S) -> impl Fn(&KeyData<K>) -> u64 + '_
+where
+    K: Hash,
+    S: BuildHasher,
+{
+    move |val| hash_builder.hash_one(&val.key)
 }

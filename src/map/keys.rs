@@ -1,73 +1,72 @@
-use core::fmt;
-use std::iter::FusedIterator;
+use core::{fmt, iter::FusedIterator};
 
-use hashbrown::hash_map;
+use hashbrown::hash_table;
 
-use crate::KeyEntry;
+use crate::KeyData;
 
 /// An iterator over the index-key pairs of an [`HashSlabMap`].
 ///
 /// This `struct` is created by the [`HashSlabMap::full_keys`] method.
 /// See its documentation for more.
-pub struct FullKeys<'a, K, V> {
-    pub(super) keys: hash_map::Keys<'a, KeyEntry<K>, V>,
+pub struct FullKeys<'a, K> {
+    iter: hash_table::Iter<'a, KeyData<K>>,
 }
 
-impl<'a, K, V> FullKeys<'a, K, V> {
-    pub(crate) fn new(keys: hash_map::Keys<'a, KeyEntry<K>, V>) -> Self {
-        Self { keys }
+impl<'a, K> FullKeys<'a, K> {
+    pub(super) fn new(iter: hash_table::Iter<'a, KeyData<K>>) -> Self {
+        Self { iter }
     }
 }
 
 // https://github.com/rust-lang/rust/issues/26925
-impl<'a, K, V> Clone for FullKeys<'a, K, V> {
+impl<K> Clone for FullKeys<'_, K> {
     fn clone(&self) -> Self {
         FullKeys {
-            keys: self.keys.clone(),
+            iter: self.iter.clone(),
         }
     }
 }
 
-impl<K: fmt::Debug, V> fmt::Debug for FullKeys<'_, K, V> {
+impl<K: fmt::Debug> fmt::Debug for FullKeys<'_, K> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_list().entries(self.clone()).finish()
     }
 }
 
-impl<'a, K, V> Iterator for FullKeys<'a, K, V> {
+impl<'a, K> Iterator for FullKeys<'a, K> {
     type Item = (usize, &'a K);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.keys
+        self.iter
             .next()
-            .map(|KeyEntry { index, key, .. }| (*index, key))
+            .map(|KeyData { index, key, .. }| (*index, key))
     }
 }
 
-impl<K, V> ExactSizeIterator for FullKeys<'_, K, V> {
+impl<K> ExactSizeIterator for FullKeys<'_, K> {
     fn len(&self) -> usize {
-        self.keys.len()
+        self.iter.len()
     }
 }
 
-impl<K, V> FusedIterator for FullKeys<'_, K, V> {}
+impl<K> FusedIterator for FullKeys<'_, K> {}
 
 /// An iterator over the keys of an [`HashSlabMap`].
 ///
 /// This `struct` is created by the [`HashSlabMap::keys`] method.
 /// See its documentation for more.
-pub struct Keys<'a, K, V> {
-    pub(super) full_keys: FullKeys<'a, K, V>,
+pub struct Keys<'a, K> {
+    pub(super) full_keys: FullKeys<'a, K>,
 }
 
-impl<'a, K, V> Keys<'a, K, V> {
-    pub fn new(full_keys: FullKeys<'a, K, V>) -> Self {
+impl<'a, K> Keys<'a, K> {
+    pub fn new(full_keys: FullKeys<'a, K>) -> Self {
         Self { full_keys }
     }
 }
 
 // https://github.com/rust-lang/rust/issues/26925
-impl<'a, K, V> Clone for Keys<'a, K, V> {
+impl<K> Clone for Keys<'_, K> {
     fn clone(&self) -> Self {
         Keys {
             full_keys: self.full_keys.clone(),
@@ -75,13 +74,13 @@ impl<'a, K, V> Clone for Keys<'a, K, V> {
     }
 }
 
-impl<K: fmt::Debug, V> fmt::Debug for Keys<'_, K, V> {
+impl<K: fmt::Debug> fmt::Debug for Keys<'_, K> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_list().entries(self.clone()).finish()
     }
 }
 
-impl<'a, K, V> Iterator for Keys<'a, K, V> {
+impl<'a, K> Iterator for Keys<'a, K> {
     type Item = &'a K;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -89,29 +88,29 @@ impl<'a, K, V> Iterator for Keys<'a, K, V> {
     }
 }
 
-impl<K, V> ExactSizeIterator for Keys<'_, K, V> {
+impl<K> ExactSizeIterator for Keys<'_, K> {
     fn len(&self) -> usize {
         self.full_keys.len()
     }
 }
 
-impl<K, V> FusedIterator for Keys<'_, K, V> {}
+impl<K> FusedIterator for Keys<'_, K> {}
 
 /// An owning iterator over the keys of an [`HashSlabMap`].
 ///
 /// This `struct` is created by the [`HashSlabMap::into_keys`] method.
 /// See its documentation for more.
-pub struct IntoKeys<K, V> {
-    into_keys: hash_map::IntoKeys<KeyEntry<K>, V>,
+pub struct IntoKeys<K> {
+    into_iter: hash_table::IntoIter<KeyData<K>>,
 }
 
-impl<K, V> IntoKeys<K, V> {
-    pub(crate) fn new(into_keys: hash_map::IntoKeys<KeyEntry<K>, V>) -> Self {
-        Self { into_keys }
+impl<K> IntoKeys<K> {
+    pub(super) fn new(into_iter: hash_table::IntoIter<KeyData<K>>) -> Self {
+        Self { into_iter }
     }
 }
 
-impl<K: fmt::Debug, V> fmt::Debug for IntoKeys<K, V> {
+impl<K: fmt::Debug> fmt::Debug for IntoKeys<K> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("IntoKeys")
             .field("remaining", &self.len())
@@ -119,49 +118,49 @@ impl<K: fmt::Debug, V> fmt::Debug for IntoKeys<K, V> {
     }
 }
 
-impl<K, V> Iterator for IntoKeys<K, V> {
+impl<K> Iterator for IntoKeys<K> {
     type Item = K;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.into_keys.next().map(|KeyEntry { key, .. }| key)
+        self.into_iter.next().map(|KeyData { key, .. }| key)
     }
 }
 
-impl<K, V> ExactSizeIterator for IntoKeys<K, V> {
+impl<K> ExactSizeIterator for IntoKeys<K> {
     fn len(&self) -> usize {
-        self.into_keys.len()
+        self.into_iter.len()
     }
 }
 
-impl<K, V> FusedIterator for IntoKeys<K, V> {}
+impl<K> FusedIterator for IntoKeys<K> {}
 
 /// An iterator over the indexes ([`usize`] keys) of an [`HashSlabMap`].
 ///
 /// This `struct` is created by the [`HashSlabMap::indices`] method.
 /// See its documentation for more.
 #[derive(Debug, Clone)]
-pub struct Indices<'a, K, V> {
-    pub(super) keys: hash_map::Keys<'a, KeyEntry<K>, V>,
+pub struct Indices<'a, K> {
+    iter: hash_table::Iter<'a, KeyData<K>>,
 }
 
-impl<'a, K, V> Indices<'a, K, V> {
-    pub(crate) fn new(keys: hash_map::Keys<'a, KeyEntry<K>, V>) -> Self {
-        Self { keys }
+impl<'a, K> Indices<'a, K> {
+    pub(super) fn new(iter: hash_table::Iter<'a, KeyData<K>>) -> Self {
+        Self { iter }
     }
 }
 
-impl<'a, K, V> Iterator for Indices<'a, K, V> {
+impl<K> Iterator for Indices<'_, K> {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.keys.next().map(|KeyEntry { index, .. }| *index)
+        self.iter.next().map(|KeyData { index, .. }| *index)
     }
 }
 
-impl<K, V> ExactSizeIterator for Indices<'_, K, V> {
+impl<K> ExactSizeIterator for Indices<'_, K> {
     fn len(&self) -> usize {
-        self.keys.len()
+        self.iter.len()
     }
 }
 
-impl<K, V> FusedIterator for Indices<'_, K, V> {}
+impl<K> FusedIterator for Indices<'_, K> {}

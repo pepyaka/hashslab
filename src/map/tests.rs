@@ -88,3 +88,57 @@ fn with_fxhash_hasher() {
     output.sort();
     assert_eq!(sample, output);
 }
+
+#[test]
+fn insert_same_key() {
+    let mut map = HashSlabMap::new();
+
+    assert_eq!(None, map.insert(0, "A"));
+    assert_eq!(Some("A"), map.insert(0, "B"));
+}
+
+#[test]
+fn simple_extend() {
+    let mut map = HashSlabMap::new();
+
+    assert_eq!(None, map.insert(0, "A"));
+
+    map.extend([(0, "B")]);
+    assert_eq!(1, map.len());
+    assert_eq!(Some(&"B"), map.get(&0));
+
+    map.extend([(0, "B"), (1, "C")]);
+    dbg!(&map);
+    assert_eq!(2, map.len());
+    assert_eq!(Some(&"B"), map.get(&0));
+
+    map.extend([(0, "B"), (1, "C"), (2, "D")]);
+    assert_eq!(3, map.len());
+    assert_eq!(Some(&"B"), map.get(&0));
+}
+
+#[test]
+fn reserve_step_by_step() {
+    let mut map = HashSlabMap::<(), ()>::new();
+
+    assert_eq!(0, map.table.len());
+    assert_eq!(0, map.table.capacity());
+    assert_eq!(0, map.slab.len());
+    assert_eq!(0, map.slab.capacity());
+
+    map.reserve(1);
+    let cap = 1;
+
+    assert_eq!(0, map.table.len());
+    assert!(
+        dbg!(map.table.capacity()) >= cap,
+        "{} >= {cap}",
+        map.slab.capacity()
+    );
+    assert_eq!(0, map.slab.len());
+    assert!(
+        map.slab.capacity() >= cap,
+        "{} >= {cap}",
+        map.slab.capacity()
+    );
+}
