@@ -1,22 +1,24 @@
-use core::fmt;
-use std::iter::FusedIterator;
+use core::{fmt, iter::FusedIterator};
 
-use hashbrown::hash_map;
+use hashbrown::hash_table;
 use slab::Slab;
 
-use crate::KeyEntry;
+use crate::{KeyData, ValueData};
 
 /// A draining iterator over the index-key-value triples of an [`HashSlabMap`].
 ///
 /// This `struct` is created by the [`HashSlabMap::drain`] method.
 /// See its documentation for more.
 pub struct DrainFull<'a, K, V> {
-    pub(super) drain: hash_map::Drain<'a, KeyEntry<K>, V>,
-    pub(super) slab: &'a mut Slab<u64>,
+    drain: hash_table::Drain<'a, KeyData<K>>,
+    slab: &'a mut Slab<ValueData<V>>,
 }
 
 impl<'a, K, V> DrainFull<'a, K, V> {
-    pub(super) fn new(drain: hash_map::Drain<'a, KeyEntry<K>, V>, slab: &'a mut Slab<u64>) -> Self {
+    pub(super) fn new(
+        drain: hash_table::Drain<'a, KeyData<K>>,
+        slab: &'a mut Slab<ValueData<V>>,
+    ) -> Self {
         Self { drain, slab }
     }
 }
@@ -29,16 +31,14 @@ impl<K: fmt::Debug, V: fmt::Debug> fmt::Debug for DrainFull<'_, K, V> {
     }
 }
 
-impl<'a, K, V> Iterator for DrainFull<'a, K, V> {
+impl<K, V> Iterator for DrainFull<'_, K, V> {
     type Item = (usize, K, V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.drain
-            .next()
-            .map(|(KeyEntry { key, index, .. }, value)| {
-                self.slab.remove(index);
-                (index, key, value)
-            })
+        self.drain.next().map(|KeyData { key, index, .. }| {
+            let ValueData { value, .. } = self.slab.remove(index);
+            (index, key, value)
+        })
     }
 }
 
@@ -72,7 +72,7 @@ impl<K: fmt::Debug, V: fmt::Debug> fmt::Debug for Drain<'_, K, V> {
     }
 }
 
-impl<'a, K, V> Iterator for Drain<'a, K, V> {
+impl<K, V> Iterator for Drain<'_, K, V> {
     type Item = (K, V);
 
     fn next(&mut self) -> Option<Self::Item> {

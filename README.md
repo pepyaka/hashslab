@@ -58,7 +58,7 @@ assert_eq!(map.get_index_of(&'c'), Some(2));
 
 ## Implementation
 
-`HashSlab` is implemented using a [`HashMap`](https://docs.rs/hashbrown/latest/hashbrown/struct.HashMap.html) for key-value pairs and a [`Slab`](https://docs.rs/slab/latest/slab/struct.Slab.html) for managing pair indexes. Keys and values are stored in the `HashMap`, while each `Slab` entry also holds the *raw* hash value (`u64`) of the key, which can be used to efficiently locate the corresponding key entry in the `HashMap`.
+`HashSlab` is implemented using a [`HashMap`](https://docs.rs/hashbrown/latest/hashbrown/struct.HashMap.html) for keys and a [`Slab`](https://docs.rs/slab/latest/slab/struct.Slab.html) for values. The `HashMap` stores the keys, while each entry in the `Slab` contains both the value and the *raw* hash (`u64`) of the corresponding key. This design allows efficient retrieval of the associated key entry in the `HashMap` using the precomputed hash.
 
 ## Performance
 

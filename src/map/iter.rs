@@ -1,9 +1,9 @@
-use core::fmt;
-use std::iter::FusedIterator;
+use core::{fmt, iter::FusedIterator};
 
-use hashbrown::hash_map;
+use hashbrown::hash_table;
+use slab::Slab;
 
-use crate::KeyEntry;
+use crate::{KeyData, ValueData};
 
 use super::HashSlabMap;
 
@@ -12,20 +12,25 @@ use super::HashSlabMap;
 /// This `struct` is created by the [`HashSlabMap::iter_full`] method.
 /// See its documentation for more.
 pub struct IterFull<'a, K, V> {
-    pub(super) iter: hash_map::Iter<'a, KeyEntry<K>, V>,
+    iter: hash_table::Iter<'a, KeyData<K>>,
+    slab: &'a Slab<ValueData<V>>,
 }
 
 impl<'a, K, V> IterFull<'a, K, V> {
-    pub(super) fn new(iter: hash_map::Iter<'a, KeyEntry<K>, V>) -> Self {
-        Self { iter }
+    pub(super) fn new(
+        iter: hash_table::Iter<'a, KeyData<K>>,
+        slab: &'a Slab<ValueData<V>>,
+    ) -> Self {
+        Self { iter, slab }
     }
 }
 
 // https://github.com/rust-lang/rust/issues/26925
-impl<'a, K, V> Clone for IterFull<'a, K, V> {
+impl<K, V> Clone for IterFull<'_, K, V> {
     fn clone(&self) -> Self {
         IterFull {
             iter: self.iter.clone(),
+            slab: self.slab,
         }
     }
 }
@@ -42,9 +47,10 @@ impl<'a, K, V> Iterator for IterFull<'a, K, V> {
     type Item = (usize, &'a K, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter
-            .next()
-            .map(|(KeyEntry { key, index, .. }, value)| (*index, key, value))
+        self.iter.next().map(|KeyData { key, index, .. }| {
+            let ValueData { value, .. } = &self.slab[*index];
+            (*index, key, value)
+        })
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -69,15 +75,13 @@ pub struct Iter<'a, K, V> {
 }
 
 impl<'a, K, V> Iter<'a, K, V> {
-    pub(super) fn new(iter: hash_map::Iter<'a, KeyEntry<K>, V>) -> Self {
-        Self {
-            iter_full: IterFull::new(iter),
-        }
+    pub fn new(iter_full: IterFull<'a, K, V>) -> Self {
+        Self { iter_full }
     }
 }
 
 // https://github.com/rust-lang/rust/issues/26925
-impl<'a, K, V> Clone for Iter<'a, K, V> {
+impl<K, V> Clone for Iter<'_, K, V> {
     fn clone(&self) -> Self {
         Iter {
             iter_full: self.iter_full.clone(),
@@ -116,18 +120,22 @@ impl<K, V> FusedIterator for Iter<'_, K, V> {}
 /// This `struct` is created by the [`HashSlabMap::iter_full_mut`] method.
 /// See its documentation for more.
 pub struct IterFullMut<'a, K, V> {
-    iter_mut: hash_map::IterMut<'a, KeyEntry<K>, V>,
+    iter: hash_table::Iter<'a, KeyData<K>>,
+    slab: &'a mut Slab<ValueData<V>>,
 }
 
 impl<'a, K, V> IterFullMut<'a, K, V> {
-    pub(super) fn new(iter_mut: hash_map::IterMut<'a, KeyEntry<K>, V>) -> Self {
-        Self { iter_mut }
+    pub(super) fn new(
+        iter: hash_table::Iter<'a, KeyData<K>>,
+        slab: &'a mut Slab<ValueData<V>>,
+    ) -> Self {
+        Self { iter, slab }
     }
 }
 
 impl<K: fmt::Debug, V: fmt::Debug> fmt::Debug for IterFullMut<'_, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("IntoFullMut")
+        f.debug_struct("IterFullMut")
             .field("remaining", &self.len())
             .finish()
     }
@@ -137,19 +145,23 @@ impl<'a, K, V> Iterator for IterFullMut<'a, K, V> {
     type Item = (usize, &'a K, &'a mut V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter_mut
-            .next()
-            .map(|(KeyEntry { index, key, .. }, value)| (*index, key, value))
+        let KeyData { key, index, .. } = self.iter.next()?;
+        self.slab.get_mut(*index).map(|ValueData { value, .. }| {
+            // We are using raw pointers to access the value in the Slab
+            // and ensuring that no other reference to the Slab is active
+            let value = unsafe { &mut *(value as *mut V) };
+            (*index, key, value)
+        })
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.iter_mut.size_hint()
+        self.iter.size_hint()
     }
 }
 
 impl<K, V> ExactSizeIterator for IterFullMut<'_, K, V> {
     fn len(&self) -> usize {
-        self.iter_mut.len()
+        self.iter.len()
     }
 }
 
@@ -198,12 +210,16 @@ impl<K, V> ExactSizeIterator for IterMut<'_, K, V> {
 /// This `struct` is created by the [`HashSlabMap::into_full_iter`] method
 /// (provided by the [`IntoIterator`] trait). See its documentation for more.
 pub struct IntoFullIter<K, V> {
-    into_iter: hash_map::IntoIter<KeyEntry<K>, V>,
+    into_iter: hash_table::IntoIter<KeyData<K>>,
+    slab: Slab<ValueData<V>>,
 }
 
 impl<K, V> IntoFullIter<K, V> {
-    pub(crate) fn new(into_iter: hash_map::IntoIter<KeyEntry<K>, V>) -> Self {
-        Self { into_iter }
+    pub(super) fn new(
+        into_iter: hash_table::IntoIter<KeyData<K>>,
+        slab: Slab<ValueData<V>>,
+    ) -> Self {
+        Self { into_iter, slab }
     }
 }
 
@@ -219,9 +235,10 @@ impl<K, V> Iterator for IntoFullIter<K, V> {
     type Item = (usize, K, V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.into_iter
-            .next()
-            .map(|(KeyEntry { index, key, .. }, value)| (index, key, value))
+        self.into_iter.next().map(|KeyData { index, key, .. }| {
+            let ValueData { value, .. } = self.slab.remove(index);
+            (index, key, value)
+        })
     }
 }
 
@@ -265,7 +282,7 @@ impl<K, V, S> IntoIterator for HashSlabMap<K, V, S> {
 
     fn into_iter(self) -> Self::IntoIter {
         IntoIter {
-            into_full_iter: IntoFullIter::new(self.map.into_iter()),
+            into_full_iter: self.into_full_iter(),
         }
     }
 }

@@ -1,13 +1,9 @@
-use std::{
-    fmt,
-    hash::{BuildHasher, Hash},
-    mem,
-};
+use std::{fmt, hash::Hash, mem};
 
-use hashbrown::hash_map;
+use hashbrown::hash_table;
 use slab::Slab;
 
-use crate::{HashSlabHasherBuilder, KeyEntry};
+use crate::{KeyData, ValueData};
 
 /// A view into a single entry, which may either be vacant or occupied.
 ///
@@ -45,14 +41,14 @@ use crate::{HashSlabHasherBuilder, KeyEntry};
 /// vec.sort_unstable();
 /// assert_eq!(vec, [("a", 10), ("b", 2), ("c", 3), ("d", 4), ("e", 5)]);
 /// ```
-pub enum Entry<'a, K, V, S> {
+pub enum Entry<'a, K, V> {
     /// Existing slot with equivalent key.
-    Occupied(OccupiedEntry<'a, K, V, S>),
+    Occupied(OccupiedEntry<'a, K, V>),
     /// Vacant slot (no equivalent key in the map).
-    Vacant(VacantEntry<'a, K, V, S>),
+    Vacant(VacantEntry<'a, K, V>),
 }
 
-impl<'a, K, V, S> Entry<'a, K, V, S> {
+impl<K, V> Entry<'_, K, V> {
     /// Return the index where the key-value pair exists or will be inserted.
     pub fn index(&self) -> usize {
         match *self {
@@ -81,13 +77,12 @@ impl<'a, K, V, S> Entry<'a, K, V, S> {
     }
 }
 
-impl<'a, K, V, S> Entry<'a, K, V, S>
+impl<'a, K, V> Entry<'a, K, V>
 where
     K: Hash,
-    S: BuildHasher,
 {
     /// Sets the value of the entry (after inserting if vacant), and returns an `OccupiedEntry`.
-    pub fn insert_entry(self, value: V) -> OccupiedEntry<'a, K, V, S> {
+    pub fn insert_entry(self, value: V) -> OccupiedEntry<'a, K, V> {
         match self {
             Entry::Occupied(mut entry) => {
                 entry.insert(value);
@@ -155,7 +150,7 @@ where
     }
 }
 
-impl<K: fmt::Debug, V: fmt::Debug, S> fmt::Debug for Entry<'_, K, V, S> {
+impl<K: fmt::Debug, V: fmt::Debug> fmt::Debug for Entry<'_, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut tuple = f.debug_tuple("Entry");
         match self {
@@ -168,15 +163,15 @@ impl<K: fmt::Debug, V: fmt::Debug, S> fmt::Debug for Entry<'_, K, V, S> {
 
 /// A view into an occupied entry in an [`HashSlabMap`][crate::HashSlabMap].
 /// It is part of the [`Entry`] enum.
-pub struct OccupiedEntry<'a, K, V, S> {
-    inner: hash_map::OccupiedEntry<'a, KeyEntry<K>, V, HashSlabHasherBuilder<S>>,
-    slab: &'a mut Slab<u64>,
+pub struct OccupiedEntry<'a, K, V> {
+    inner: hash_table::OccupiedEntry<'a, KeyData<K>>,
+    slab: &'a mut Slab<ValueData<V>>,
 }
 
-impl<'a, K, V, S> OccupiedEntry<'a, K, V, S> {
+impl<'a, K, V> OccupiedEntry<'a, K, V> {
     pub(super) fn new(
-        inner: hash_map::OccupiedEntry<'a, KeyEntry<K>, V, HashSlabHasherBuilder<S>>,
-        slab: &'a mut Slab<u64>,
+        inner: hash_table::OccupiedEntry<'a, KeyData<K>>,
+        slab: &'a mut Slab<ValueData<V>>,
     ) -> Self {
         Self { inner, slab }
     }
@@ -184,7 +179,7 @@ impl<'a, K, V, S> OccupiedEntry<'a, K, V, S> {
     /// Return the index of the key-value pair
     #[inline]
     pub fn index(&self) -> usize {
-        self.inner.key().index
+        self.inner.get().index
     }
 
     // #[inline]
@@ -198,12 +193,13 @@ impl<'a, K, V, S> OccupiedEntry<'a, K, V, S> {
     /// difference if the key type has any distinguishing features outside of `Hash` and `Eq`, like
     /// extra fields or the memory address of an allocation.
     pub fn key(&self) -> &K {
-        &self.inner.key().key
+        &self.inner.get().key
     }
 
     /// Gets a reference to the entry's value in the map.
     pub fn get(&self) -> &V {
-        &self.inner.get()
+        let KeyData { index, .. } = self.inner.get();
+        &self.slab[*index].value
     }
 
     /// Gets a mutable reference to the entry's value in the map.
@@ -211,13 +207,15 @@ impl<'a, K, V, S> OccupiedEntry<'a, K, V, S> {
     /// If you need a reference which may outlive the destruction of the
     /// [`Entry`] value, see [`into_mut`][Self::into_mut].
     pub fn get_mut(&mut self) -> &mut V {
-        self.inner.get_mut()
+        let KeyData { index, .. } = self.inner.get();
+        &mut self.slab[*index].value
     }
 
     /// Converts into a mutable reference to the entry's value in the map,
     /// with a lifetime bound to the map itself.
     pub fn into_mut(self) -> &'a mut V {
-        self.inner.into_mut()
+        let KeyData { index, .. } = self.inner.get();
+        &mut self.slab[*index].value
     }
 
     /// Sets the value of the entry to `value`, and returns the entry's old value.
@@ -232,13 +230,13 @@ impl<'a, K, V, S> OccupiedEntry<'a, K, V, S> {
 
     /// Remove and return the key, value pair stored in the map for this entry
     pub fn remove_entry(self) -> (K, V) {
-        let (KeyEntry { key, index, .. }, value) = self.inner.remove_entry();
-        self.slab.remove(index);
+        let (KeyData { key, index, .. }, _) = self.inner.remove();
+        let ValueData { value, .. } = self.slab.remove(index);
         (key, value)
     }
 }
 
-impl<K: fmt::Debug, V: fmt::Debug, S> fmt::Debug for OccupiedEntry<'_, K, V, S> {
+impl<K: fmt::Debug, V: fmt::Debug> fmt::Debug for OccupiedEntry<'_, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OccupiedEntry")
             .field("key", self.key())
@@ -265,32 +263,41 @@ impl<K: fmt::Debug, V: fmt::Debug, S> fmt::Debug for OccupiedEntry<'_, K, V, S> 
 
 /// A view into a vacant entry in an [`HashSlabMap`][crate::HashSlabMap].
 /// It is part of the [`Entry`] enum.
-pub struct VacantEntry<'a, K, V, S> {
-    inner: hash_map::VacantEntry<'a, KeyEntry<K>, V, HashSlabHasherBuilder<S>>,
-    slab: &'a mut Slab<u64>,
+pub struct VacantEntry<'a, K, V> {
+    inner: hash_table::VacantEntry<'a, KeyData<K>>,
+    slab: &'a mut Slab<ValueData<V>>,
+    key: K,
+    hash: u64,
 }
 
-impl<'a, K, V, S> VacantEntry<'a, K, V, S> {
+impl<'a, K, V> VacantEntry<'a, K, V> {
     pub(super) fn new(
-        inner: hash_map::VacantEntry<'a, KeyEntry<K>, V, HashSlabHasherBuilder<S>>,
-        slab: &'a mut Slab<u64>,
+        inner: hash_table::VacantEntry<'a, KeyData<K>>,
+        slab: &'a mut Slab<ValueData<V>>,
+        key: K,
+        hash: u64,
     ) -> Self {
-        Self { inner, slab }
+        Self {
+            inner,
+            slab,
+            key,
+            hash,
+        }
     }
 
     /// Return the index where a key-value pair may be inserted.
     pub fn index(&self) -> usize {
-        self.inner.key().index
+        self.slab.vacant_key()
     }
 
     /// Gets a reference to the key that was used to find the entry.
     pub fn key(&self) -> &K {
-        &self.inner.key().key
+        &self.key
     }
 
     /// Takes ownership of the key, leaving the entry vacant.
     pub fn into_key(self) -> K {
-        self.inner.into_key().key
+        self.key
     }
 
     /// Inserts the entry's key and the given value into the map, and returns a mutable reference
@@ -298,11 +305,10 @@ impl<'a, K, V, S> VacantEntry<'a, K, V, S> {
     pub fn insert(self, value: V) -> &'a mut V
     where
         K: Hash,
-        S: BuildHasher,
     {
-        let KeyEntry { hash_value, .. } = self.inner.key();
-        self.slab.insert(*hash_value);
-        self.inner.insert(value)
+        let (inner, slab) = self.table_entry_insert(value);
+        let index = inner.get().index;
+        &mut slab[index].value
     }
 
     /// Sets the value of the entry with the [`VacantEntry`]'s key, and returns an [`OccupiedEntry`].
@@ -320,21 +326,34 @@ impl<'a, K, V, S> VacantEntry<'a, K, V, S> {
     ///     assert_eq!(o.get(), &37);
     /// }
     /// ```
-    pub fn insert_entry(self, value: V) -> OccupiedEntry<'a, K, V, S>
+    pub fn insert_entry(self, value: V) -> OccupiedEntry<'a, K, V>
     where
         K: Hash,
-        S: BuildHasher,
     {
-        let inner = self.inner.insert_entry(value);
-        self.slab.insert(inner.key().hash_value);
-        OccupiedEntry {
-            inner,
-            slab: self.slab,
-        }
+        let (inner, slab) = self.table_entry_insert(value);
+        OccupiedEntry { inner, slab }
     }
 }
 
-impl<K: fmt::Debug, V, S> fmt::Debug for VacantEntry<'_, K, V, S> {
+// Private functions
+impl<'a, K, V> VacantEntry<'a, K, V> {
+    fn table_entry_insert(
+        self,
+        value: V,
+    ) -> (
+        hash_table::OccupiedEntry<'a, KeyData<K>>,
+        &'a mut Slab<ValueData<V>>,
+    )
+    where
+        K: Hash,
+    {
+        let index = self.slab.insert(ValueData::new(value, self.hash));
+        let inner = self.inner.insert(KeyData::new(self.key, index));
+        (inner, self.slab)
+    }
+}
+
+impl<K: fmt::Debug, V> fmt::Debug for VacantEntry<'_, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("VacantEntry").field(self.key()).finish()
     }
