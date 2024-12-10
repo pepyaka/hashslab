@@ -1,4 +1,10 @@
 #![doc = include_str!("../README.md")]
+#![no_std]
+
+#[cfg(feature = "std")]
+extern crate std;
+
+use core::alloc::Layout;
 
 use thiserror::Error;
 
@@ -36,7 +42,7 @@ pub enum TryReserveError {
     CapacityOverflow,
 
     #[error("The memory allocator returned an error. The layout of allocation request that failed: {layout:?}")]
-    AllocError { layout: std::alloc::Layout },
+    AllocError { layout: Layout },
 
     #[error(
         "sum of current ({capacity}) and additional ({additional}) capacity exceeds isize::MAX"

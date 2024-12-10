@@ -1,16 +1,17 @@
+use std::{format, println, string::String, vec};
+
 use super::*;
-use std::string::String;
 
 // Tests from indexmap
 #[test]
 fn it_works() {
     let mut map = HashSlabMap::new();
-    assert_eq!(map.is_empty(), true);
+    assert!(map.is_empty());
     map.insert(1, ());
     map.insert(1, ());
     assert_eq!(map.len(), 1);
     assert!(map.get(&1).is_some());
-    assert_eq!(map.is_empty(), false);
+    assert!(!map.is_empty());
 }
 
 #[test]
@@ -19,7 +20,7 @@ fn new() {
     println!("{:?}", map);
     assert_eq!(map.capacity(), 0);
     assert_eq!(map.len(), 0);
-    assert_eq!(map.is_empty(), true);
+    assert!(map.is_empty());
 }
 
 #[test]
@@ -44,7 +45,7 @@ fn insert() {
 
 #[test]
 fn insert_full() {
-    let insert = vec![9, 2, 7, 1, 4, 6, 13];
+    let insert = [9, 2, 7, 1, 4, 6, 13];
     let present = vec![1, 6, 2];
     let mut map = HashSlabMap::with_capacity(insert.len());
 
@@ -134,10 +135,10 @@ fn reserve() {
         assert_eq!(map.capacity(), capacity);
         assert_eq!(map.get(&i), Some(&(i * i)));
     }
-    map.insert(capacity, std::usize::MAX);
+    map.insert(capacity, usize::MAX);
     assert_eq!(map.len(), capacity + 1);
     assert!(map.capacity() > capacity);
-    assert_eq!(map.get(&capacity), Some(&std::usize::MAX));
+    assert_eq!(map.get(&capacity), Some(&usize::MAX));
 }
 
 #[test]
@@ -157,7 +158,7 @@ fn shrink_to_fit() {
         assert_eq!(map.len(), i);
         map.insert(i, i * i);
         assert_eq!(map.len(), i + 1);
-        assert!(map.capacity() >= i + 1);
+        assert!(map.capacity() > i);
         assert_eq!(map.get(&i), Some(&(i * i)));
         map.shrink_to_fit();
         assert_eq!(map.len(), i + 1);
@@ -224,13 +225,13 @@ fn remove_index() {
     for &idx in remove_index_seq {
         let out_vec = vector[idx];
         vector[idx] = None;
-        let out_map = map.remove_index(idx).map(|(k, _)| k).flatten();
+        let out_map = map.remove_index(idx).and_then(|(k, _)| k);
         assert_eq!(out_vec, out_map);
     }
     assert_eq!(vector.iter().filter(|v| v.is_some()).count(), map.len());
-    for i in 0..insert.len() {
+    (0..insert.len()).for_each(|i| {
         assert_eq!(map.get_index(i).and_then(|v| *v.0), vector[i]);
-    }
+    });
 }
 
 #[test]
@@ -297,16 +298,11 @@ fn entry_and_modify() {
 fn entry_or_default() {
     let mut map = HashSlabMap::new();
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Default)]
     enum TestEnum {
+        #[default]
         DefaultValue,
         NonDefaultValue,
-    }
-
-    impl Default for TestEnum {
-        fn default() -> Self {
-            TestEnum::DefaultValue
-        }
     }
 
     map.insert(1, TestEnum::NonDefaultValue);

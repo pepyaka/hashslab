@@ -1,9 +1,10 @@
+use rand::{rngs::SmallRng, Rng, SeedableRng};
+use std::{
+    cell::RefCell, format, hash::RandomState as DefaultHashBuilder, thread_local, vec, vec::Vec,
+};
+
 use super::Entry::{Occupied, Vacant};
 use super::HashSlabMap;
-use rand::{rngs::SmallRng, Rng, SeedableRng};
-use std::cell::RefCell;
-use std::hash::RandomState as DefaultHashBuilder;
-use std::vec::Vec;
 
 #[test]
 fn test_zero_capacities() {
