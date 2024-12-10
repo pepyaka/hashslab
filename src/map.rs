@@ -1,9 +1,12 @@
-use std::{
+use core::{
     fmt,
-    hash::{BuildHasher, Hash, RandomState},
+    hash::{BuildHasher, Hash},
     mem,
     ops::{Index, IndexMut},
 };
+
+#[cfg(feature = "std")]
+use std::hash::RandomState;
 
 use hashbrown::{hash_table, Equivalent, HashTable};
 use slab::Slab;
@@ -30,7 +33,15 @@ pub use entry::{Entry, OccupiedEntry, VacantEntry};
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "std")]
 pub struct HashSlabMap<K, V, S = RandomState> {
+    table: HashTable<KeyData<K>>,
+    slab: Slab<ValueData<V>>,
+    builder: S,
+}
+
+#[cfg(not(feature = "std"))]
+pub struct HashSlabMap<K, V, S> {
     table: HashTable<KeyData<K>>,
     slab: Slab<ValueData<V>>,
     builder: S,
