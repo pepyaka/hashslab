@@ -143,3 +143,29 @@ fn reserve_step_by_step() {
         map.slab.capacity()
     );
 }
+
+#[test]
+fn drain() {
+    let mut s: HashSlabMap<_, _> = (1..100).map(|n| (n, n * 10)).collect();
+
+    for _ in 0..20 {
+        assert_eq!(s.len(), 99);
+
+        {
+            let mut last_i = 0;
+            let mut d = s.drain();
+            for (i, (x, _)) in d.by_ref().take(50).enumerate() {
+                last_i = i;
+                assert!(x != 0);
+            }
+            assert_eq!(last_i, 49);
+        }
+
+        if !s.is_empty() {
+            panic!("s should be empty!");
+        }
+
+        // reset to try again.
+        s.extend((1..100).map(|n| (n, n * 10)));
+    }
+}

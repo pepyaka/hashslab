@@ -8,6 +8,9 @@ use crate::KeyData;
 ///
 /// This `struct` is created by the [`HashSlabMap::full_keys`] method.
 /// See its documentation for more.
+///
+/// [`HashSlabMap`]: crate::HashSlabMap
+/// [`HashSlabMap::full_keys`]: crate::HashSlabMap::full_keys
 pub struct FullKeys<'a, K> {
     iter: hash_table::Iter<'a, KeyData<K>>,
 }
@@ -33,6 +36,14 @@ impl<K: fmt::Debug> fmt::Debug for FullKeys<'_, K> {
     }
 }
 
+impl<K> Default for FullKeys<'_, K> {
+    fn default() -> Self {
+        Self {
+            iter: Default::default(),
+        }
+    }
+}
+
 impl<'a, K> Iterator for FullKeys<'a, K> {
     type Item = (usize, &'a K);
 
@@ -55,6 +66,9 @@ impl<K> FusedIterator for FullKeys<'_, K> {}
 ///
 /// This `struct` is created by the [`HashSlabMap::keys`] method.
 /// See its documentation for more.
+///
+/// [`HashSlabMap`]: crate::HashSlabMap
+/// [`HashSlabMap::keys`]: crate::HashSlabMap::keys
 pub struct Keys<'a, K> {
     pub(super) full_keys: FullKeys<'a, K>,
 }
@@ -80,6 +94,14 @@ impl<K: fmt::Debug> fmt::Debug for Keys<'_, K> {
     }
 }
 
+impl<K> Default for Keys<'_, K> {
+    fn default() -> Self {
+        Self {
+            full_keys: Default::default(),
+        }
+    }
+}
+
 impl<'a, K> Iterator for Keys<'a, K> {
     type Item = &'a K;
 
@@ -100,6 +122,9 @@ impl<K> FusedIterator for Keys<'_, K> {}
 ///
 /// This `struct` is created by the [`HashSlabMap::into_keys`] method.
 /// See its documentation for more.
+///
+/// [`HashSlabMap`]: crate::HashSlabMap
+/// [`HashSlabMap::into_keys`]: crate::HashSlabMap::into_keys
 pub struct IntoKeys<K> {
     into_iter: hash_table::IntoIter<KeyData<K>>,
 }
@@ -115,6 +140,14 @@ impl<K: fmt::Debug> fmt::Debug for IntoKeys<K> {
         f.debug_struct("IntoKeys")
             .field("remaining", &self.len())
             .finish()
+    }
+}
+
+impl<K> Default for IntoKeys<K> {
+    fn default() -> Self {
+        Self {
+            into_iter: Default::default(),
+        }
     }
 }
 
@@ -138,6 +171,9 @@ impl<K> FusedIterator for IntoKeys<K> {}
 ///
 /// This `struct` is created by the [`HashSlabMap::indices`] method.
 /// See its documentation for more.
+///
+/// [`HashSlabMap`]: crate::HashSlabMap
+/// [`HashSlabMap::indices`]: crate::HashSlabMap::indices
 #[derive(Debug, Clone)]
 pub struct Indices<'a, K> {
     iter: hash_table::Iter<'a, KeyData<K>>,

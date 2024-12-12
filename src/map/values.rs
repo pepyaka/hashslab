@@ -6,6 +6,9 @@ use super::iter::{IntoIter, IterFull, IterFullMut};
 ///
 /// This `struct` is created by the [`HashSlabMap::values`] method.
 /// See its documentation for more.
+///
+/// [`HashSlabMap`]: crate::HashSlabMap
+/// [`HashSlabMap::values`]: crate::HashSlabMap::values
 pub struct Values<'a, K, V> {
     iter_full: IterFull<'a, K, V>,
 }
@@ -51,6 +54,9 @@ impl<K, V> FusedIterator for Values<'_, K, V> {}
 ///
 /// This `struct` is created by the [`HashSlabMap::values_mut`] method.
 /// See its documentation for more.
+///
+/// [`HashSlabMap`]: crate::HashSlabMap
+/// [`HashSlabMap::values_mut`]: crate::HashSlabMap::values_mut
 pub struct ValuesMut<'a, K, V> {
     iter_full_mut: IterFullMut<'a, K, V>,
 }
@@ -89,6 +95,9 @@ impl<K, V> FusedIterator for ValuesMut<'_, K, V> {}
 ///
 /// This `struct` is created by the [`HashSlabMap::into_values`] method.
 /// See its documentation for more.
+///
+/// [`HashSlabMap`]: crate::HashSlabMap
+/// [`HashSlabMap::into_values`]: crate::HashSlabMap::into_values
 pub struct IntoValues<K, V> {
     into_iter: IntoIter<K, V>,
 }

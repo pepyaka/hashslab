@@ -7,8 +7,11 @@ use crate::{KeyData, ValueData};
 
 /// A draining iterator over the index-key-value triples of an [`HashSlabMap`].
 ///
-/// This `struct` is created by the [`HashSlabMap::drain`] method.
+/// This `struct` is created by the [`HashSlabMap::drain_full`] method.
 /// See its documentation for more.
+///
+/// [`HashSlabMap`]: crate::HashSlabMap
+/// [`HashSlabMap::drain_full`]: crate::HashSlabMap::drain_full
 pub struct DrainFull<'a, K, V> {
     drain: hash_table::Drain<'a, KeyData<K>>,
     slab: &'a mut Slab<ValueData<V>>,
@@ -28,6 +31,12 @@ impl<K: fmt::Debug, V: fmt::Debug> fmt::Debug for DrainFull<'_, K, V> {
         f.debug_struct("Drain")
             .field("remaining", &self.len())
             .finish()
+    }
+}
+
+impl<K, V> Drop for DrainFull<'_, K, V> {
+    fn drop(&mut self) {
+        self.slab.clear();
     }
 }
 
@@ -54,6 +63,9 @@ impl<K, V> FusedIterator for DrainFull<'_, K, V> {}
 ///
 /// This `struct` is created by the [`HashSlabMap::drain`] method.
 /// See its documentation for more.
+///
+/// [`HashSlabMap`]: crate::HashSlabMap
+/// [`HashSlabMap::drain`]: crate::HashSlabMap::drain
 pub struct Drain<'a, K, V> {
     pub(super) drain_full: DrainFull<'a, K, V>,
 }

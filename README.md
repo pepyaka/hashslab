@@ -68,10 +68,15 @@ In general, `HashSlabMap` has comparable performance to `HashMap` and `IndexMap`
 
 - **Insertion:** Performance is identical across all three data structures.
 
-- **Lookup:** Searching with `.get()` performs the same as `HashMap` and `IndexMap`. However, `.get_index()` is about 10 times slower than `IndexMap` because `IndexMap` stores entries in a `Vec`-like structure, making index lookups as fast as `.get()` in a `Vec`. In `HashSlabMap`, the hash value is first located in the `Slab`, followed by the corresponding key-value pair in the `HashMap`.
+- **Lookup:** Searching with `.get()` performs the same as `HashMap` and `IndexMap`. However, `.get_index()` is about 10 times slower than `IndexMap` because `IndexMap` stores entries in a `Vec`-like structure, making index lookups as fast as `.get()` in a `Vec`. In `HashSlabMap`, the hash value is first located in the `Slab`, followed by the corresponding key in the `HashMap`.
 
 - **Removal:** Removing by key is on par with `HashMap` and faster than `IndexMap`. `IndexMap` provides two methods:
   - `.swap_remove()` - performs similarly to `HashSlabMap::remove()`.
   - `.shift_remove()` - significantly slower, as it shifts elements in the `Vec`. This method is *not* included in benchmarks due to being 50-100 times slower.
 
 Comprehensive benchmarks, including detailed graphs and comparisons, can be found [here](https://pepyaka.github.io/hashslab/report/).
+
+## No Standard Library Targets
+This crate supports being built without `std`. This is chosen by disabling the default "std" cargo feature, by adding `default-features = false` to your dependency specification.
+
+Creating maps and sets using `.new()` and `.with_capacity()` is unavailable without std. Use methods `.default()`, `.with_hasher()`, `.with_capacity_and_hasher()` instead. A no-std compatible hasher will be needed as well, for example from the crate twox-hash.
