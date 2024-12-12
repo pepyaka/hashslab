@@ -1,7 +1,7 @@
 use rand::{rngs::SmallRng, Rng, SeedableRng};
-use std::{
-    cell::RefCell, format, hash::RandomState as DefaultHashBuilder, thread_local, vec, vec::Vec,
-};
+use std::{cell::RefCell, format, thread_local, vec, vec::Vec};
+
+use fnv::FnvBuildHasher;
 
 use super::Entry::{Occupied, Vacant};
 use super::HashSlabMap;
@@ -16,13 +16,13 @@ fn test_zero_capacities() {
     let m = HM::default();
     assert_eq!(m.capacity(), 0);
 
-    let m = HM::with_hasher(DefaultHashBuilder::default());
+    let m = HashSlabMap::<u8, u8, _>::with_hasher(FnvBuildHasher::default());
     assert_eq!(m.capacity(), 0);
 
     let m = HM::with_capacity(0);
     assert_eq!(m.capacity(), 0);
 
-    let m = HM::with_capacity_and_hasher(0, DefaultHashBuilder::default());
+    let m = HashSlabMap::<u8, u8, _>::with_capacity_and_hasher(0, FnvBuildHasher::default());
     assert_eq!(m.capacity(), 0);
 
     let mut m = HM::new();

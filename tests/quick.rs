@@ -1,42 +1,33 @@
-use hashslab::HashSlabMap;
-// use itertools::Itertools;
+use std::{
+    cmp::min,
+    collections::{hash_map::Entry as StdEntry, HashMap},
+    fmt::Debug,
+    hash::{BuildHasher, Hash},
+    ops::Deref,
+};
 
-use quickcheck::Arbitrary;
-use quickcheck::Gen;
-use quickcheck::QuickCheck;
-// use quickcheck::TestResult;
+use quickcheck::{Arbitrary, Gen, QuickCheck};
 
-use fnv::FnvHasher;
-use std::hash::{BuildHasher, BuildHasherDefault};
-type FnvBuilder = BuildHasherDefault<FnvHasher>;
-type HashSlabMapFnv<K, V> = HashSlabMap<K, V, FnvBuilder>;
+use fnv::FnvBuildHasher;
+type HashSlabMapFnv<K, V> = HashSlabMap<K, V, FnvBuildHasher>;
 
-use std::cmp::min;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::fmt::Debug;
-use std::hash::Hash;
-// use std::ops::Bound;
-use std::ops::Deref;
+use hashslab::{map::Entry, HashSlabMap, HashSlabSet};
 
-use hashslab::map::Entry;
-use std::collections::hash_map::Entry as StdEntry;
-
-fn set<'a, T: 'a, I>(iter: I) -> HashSet<T>
+fn hsset<'a, T, I>(iter: I) -> HashSlabSet<T>
 where
     I: IntoIterator<Item = &'a T>,
-    T: Copy + Hash + Eq,
+    T: Copy + Hash + Eq + 'a,
 {
     iter.into_iter().copied().collect()
 }
 
-// fn indexmap<'a, T: 'a, I>(iter: I) -> HashSlabMap<T, ()>
-// where
-//     I: IntoIterator<Item = &'a T>,
-//     T: Copy + Hash + Eq,
-// {
-//     HashSlabMap::from_iter(iter.into_iter().copied().map(|k| (k, ())))
-// }
+fn hsmap<'a, T, I>(iter: I) -> HashSlabMap<T, ()>
+where
+    I: IntoIterator<Item = &'a T>,
+    T: Copy + Hash + Eq + 'a,
+{
+    HashSlabMap::from_iter(iter.into_iter().copied().map(|k| (k, ())))
+}
 
 // Helper macro to allow us to use smaller quickcheck limits under miri.
 macro_rules! quickcheck_limit {
@@ -87,7 +78,7 @@ quickcheck_limit! {
         for &key in &insert {
             map.insert(key, ());
         }
-        let nots = &set(&not) - &set(&insert);
+        let nots = &hsset(&not) - &hsset(&insert);
         nots.iter().all(|&key| map.get(&key).is_none())
     }
 
@@ -99,7 +90,7 @@ quickcheck_limit! {
         for &key in &remove {
             map.remove(&key);
         }
-        let elements = &set(&insert) - &set(&remove);
+        let elements = &hsset(&insert) - &hsset(&remove);
         map.len() == elements.len() && map.iter().count() == elements.len() &&
             elements.iter().all(|k| map.get(k).is_some())
     }
@@ -132,33 +123,32 @@ quickcheck_limit! {
         for &key in &remove {
             map.remove(&key);
         }
-        let elements = &set(&insert) - &set(&remove);
+        let elements = &hsset(&insert) - &hsset(&remove);
 
         map.len() == elements.len() && map.iter().count() == elements.len() &&
             elements.iter().all(|k| map.get(k).is_some())
     }
 
-    // fn indexing(insert: Vec<u8>) -> bool {
-    //     let mut map: HashSlabMap<_, _> = insert.into_iter().map(|x| (x, x)).collect();
-    //     let set: IndexSet<_> = map.keys().copied().collect();
-    //     assert_eq!(map.len(), set.len());
+    fn indexing(insert: Vec<u8>) -> bool {
+        let mut map: HashSlabMap<_, _> = insert.iter().map(|&x| (x, x)).collect();
+        let set: HashSlabSet<_> = insert.iter().cloned().collect();
+        assert_eq!(map.len(), set.len());
 
-    //     for (i, &key) in set.iter().enumerate() {
-    //         assert_eq!(map.get_index(i), Some((&key, &key)));
-    //         assert_eq!(set.get_index(i), Some(&key));
-    //         assert_eq!(map[i], key);
-    //         assert_eq!(set[i], key);
+        for (i, &key) in set.iter_full() {
+            assert_eq!(map.get_index(i), Some((&key, &key)));
+            assert_eq!(set.get_index(i), Some(&key));
+            assert_eq!(map[i], key);
+            assert_eq!(set[i], key);
 
-    //         *map.get_index_mut(i).unwrap().1 >>= 1;
-    //         map[i] <<= 1;
-    //     }
+            *map.get_index_mut(i).unwrap().1 >>= 1;
+            map[i] <<= 1;
+        }
 
-    //     set.iter().enumerate().all(|(i, &key)| {
-    //         let value = key & !1;
-    //         map[&key] == value && map[i] == value
-    //     })
-    // }
-
+        set.iter_full().all(|(i, &key)| {
+            let value = key & !1;
+            map[&key] == value && map[i] == value
+        })
+    }
 }
 
 use crate::Op::*;
@@ -299,23 +289,23 @@ quickcheck_limit! {
         true
     }
 
-    // fn retain_ordered(keys: Large<Vec<i8>>, remove: Large<Vec<i8>>) -> () {
-    //     let mut map = indexmap(keys.iter());
-    //     let initial_map = map.clone(); // deduplicated in-order input
-    //     let remove_map = indexmap(remove.iter());
-    //     let keys_s = set(keys.iter());
-    //     let remove_s = set(remove.iter());
-    //     let answer = &keys_s - &remove_s;
-    //     map.retain(|k, _| !remove_map.contains_key(k));
+    fn retain_ordered(keys: Large<Vec<i8>>, remove: Large<Vec<i8>>) -> () {
+        let mut map = hsmap(keys.iter());
+        let initial_map = map.clone(); // deduplicated in-order input
+        let remove_map = hsmap(remove.iter());
+        let keys_s = hsset(keys.iter());
+        let remove_s = hsset(remove.iter());
+        let answer = &keys_s - &remove_s;
+        map.retain(|k, _| !remove_map.contains_key(k));
 
-    //     // check the values
-    //     assert_eq!(map.len(), answer.len());
-    //     for key in &answer {
-    //         assert!(map.contains_key(key));
-    //     }
-    //     // check the order
-    //     itertools::assert_equal(map.keys(), initial_map.keys().filter(|&k| !remove_map.contains_key(k)));
-    // }
+        // check the values
+        assert_eq!(map.len(), answer.len());
+        for key in &answer {
+            assert!(map.contains_key(key));
+        }
+        // check the order
+        itertools::assert_equal(map.keys(), initial_map.keys().filter(|&k| !remove_map.contains_key(k)));
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]

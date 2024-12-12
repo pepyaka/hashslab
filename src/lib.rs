@@ -1,6 +1,8 @@
 #![doc = include_str!("../README.md")]
 #![no_std]
 
+extern crate alloc;
+
 #[cfg(feature = "std")]
 extern crate std;
 
@@ -9,7 +11,12 @@ use core::alloc::Layout;
 use thiserror::Error;
 
 pub mod map;
+#[doc(inline)]
 pub use map::HashSlabMap;
+
+pub mod set;
+#[doc(inline)]
+pub use set::HashSlabSet;
 
 #[derive(Debug, Clone)]
 struct ValueData<V> {

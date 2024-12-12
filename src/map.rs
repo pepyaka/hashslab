@@ -1,3 +1,4 @@
+//! A hash map with indexes
 use core::{
     fmt,
     hash::{BuildHasher, Hash},
@@ -16,16 +17,16 @@ use crate::{TryReserveError, ValueData};
 use super::KeyData;
 
 mod keys;
-use keys::{FullKeys, Indices, IntoKeys, Keys};
+pub use keys::{FullKeys, Indices, IntoKeys, Keys};
 
 mod values;
-use values::{IntoValues, Values, ValuesMut};
+pub use values::{IntoValues, Values, ValuesMut};
 
 mod iter;
-use iter::{IntoFullIter, Iter, IterFull, IterFullMut, IterMut};
+pub use iter::{IntoFullIter, IntoIter, Iter, IterFull, IterFullMut, IterMut};
 
 mod drain;
-use drain::{Drain, DrainFull};
+pub use drain::{Drain, DrainFull};
 
 mod entry;
 pub use entry::{Entry, OccupiedEntry, VacantEntry};
@@ -33,11 +34,105 @@ pub use entry::{Entry, OccupiedEntry, VacantEntry};
 #[cfg(test)]
 mod tests;
 
+/// A hash map with indexes
+///
+/// The interface is closely compatible with the [`IndexMap`].
+///
+/// # Indices
+///
+/// [`HashSlabMap`] returns the index ([`usize`]) when storing the value. It
+/// is important to note that index may be reused. In other words, once a value
+/// associated with a given index is removed from a hashslab, that index may be
+/// returned from future calls to insert. For example, the method `.get_full` looks
+/// up the index for a key, and the method `.get_index` looks up the key-value pair
+/// by index.
+///
+/// # Examples
+///
+/// Standard [`HashMap`] usage:
+/// ```
+/// # use hashslab::HashSlabMap;
+/// // Type inference lets us omit an explicit type signature (which
+/// // would be `HashSlabMap<String, String>` in this example).
+/// let mut book_reviews = HashSlabMap::new();
+///
+/// // Review some books.
+/// book_reviews.insert(
+///     "Adventures of Huckleberry Finn".to_string(),
+///     "My favorite book.".to_string(),
+/// );
+/// book_reviews.insert(
+///     "Grimms' Fairy Tales".to_string(),
+///     "Masterpiece.".to_string(),
+/// );
+/// book_reviews.insert(
+///     "Pride and Prejudice".to_string(),
+///     "Very enjoyable.".to_string(),
+/// );
+/// book_reviews.insert(
+///     "The Adventures of Sherlock Holmes".to_string(),
+///     "Eye lyked it alot.".to_string(),
+/// );
+///
+/// // Check for a specific one.
+/// // When collections store owned values (String), they can still be
+/// // queried using references (&str).
+/// if !book_reviews.contains_key("Les Misérables") {
+///     println!("We've got {} reviews, but Les Misérables ain't one.",
+///              book_reviews.len());
+/// }
+///
+/// // oops, this review has a lot of spelling mistakes, let's delete it.
+/// book_reviews.remove("The Adventures of Sherlock Holmes");
+///
+/// // Look up the values associated with some keys.
+/// let to_find = ["Pride and Prejudice", "Alice's Adventure in Wonderland"];
+/// for &book in &to_find {
+///     match book_reviews.get(book) {
+///         Some(review) => println!("{}: {}", book, review),
+///         None => println!("{} is unreviewed.", book)
+///     }
+/// }
+///
+/// // Look up the value for a key (will panic if the key is not found).
+/// println!("Review for Jane: {}", book_reviews["Pride and Prejudice"]);
+///
+/// // Iterate over everything.
+/// for (book, review) in &book_reviews {
+///     println!("{}: \"{}\"", book, review);
+/// }
+/// ```
+///
+/// With indices:
+/// ```
+/// # use hashslab::HashSlabMap;
+/// // count the frequency of each letter in a sentence.
+/// let mut letters = HashSlabMap::new();
+/// for ch in "a short treatise on fungi".chars() {
+///     *letters.entry(ch).or_insert(0) += 1;
+/// }
+///
+/// assert_eq!(letters[&'s'], 2);
+/// assert_eq!(letters.get_index_of(&'a'), Some(0));
+/// assert_eq!(letters.get_index(1), Some((&' ', &4)));
+/// assert_eq!(letters.get(&'y'), None);
+/// ```
+///
+/// [`HashMap`]: https://doc.rust-lang.org/std/collections/struct.HashMap.html
+/// [`IndexMap`]: https://docs.rs/indexmap/latest/indexmap/map/struct.IndexMap.html
+/// [`Eq`]: https://doc.rust-lang.org/std/cmp/trait.Eq.html
+/// [`Hash`]: https://doc.rust-lang.org/std/hash/trait.Hash.html
+/// [`PartialEq`]: https://doc.rust-lang.org/std/cmp/trait.PartialEq.html
+/// [`RefCell`]: https://doc.rust-lang.org/std/cell/struct.RefCell.html
+/// [`Cell`]: https://doc.rust-lang.org/std/cell/struct.Cell.html
+/// [`default`]: #method.default
+/// [`with_hasher`]: #method.with_hasher
+/// [`with_capacity_and_hasher`]: #method.with_capacity_and_hasher
 #[cfg(feature = "std")]
 pub struct HashSlabMap<K, V, S = RandomState> {
-    table: HashTable<KeyData<K>>,
-    slab: Slab<ValueData<V>>,
-    builder: S,
+    pub(crate) table: HashTable<KeyData<K>>,
+    pub(crate) slab: Slab<ValueData<V>>,
+    pub(crate) builder: S,
 }
 
 #[cfg(not(feature = "std"))]
@@ -47,6 +142,8 @@ pub struct HashSlabMap<K, V, S> {
     builder: S,
 }
 
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl<K, V> HashSlabMap<K, V> {
     /// Create a new map. (Does not allocate.)
     #[inline]
@@ -57,34 +154,30 @@ impl<K, V> HashSlabMap<K, V> {
     /// Create a new map with capacity for `n` entries. (Does not allocate if `n` is zero.)
     #[inline]
     pub fn with_capacity(n: usize) -> Self {
-        Self::with_capacity_and_hasher(n, <_>::default())
-    }
-
-    /// Returns the index of the next vacant entry.
-    ///
-    /// This function returns the index of the vacant entry which  will be used
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use hashslab::*;
-    /// let mut map = HashSlabMap::new();
-    /// assert_eq!(map.vacant_index(), 0);
-    ///
-    /// map.insert(0, ());
-    /// assert_eq!(map.vacant_index(), 1);
-    ///
-    /// map.insert(1, ());
-    /// map.remove(&0);
-    /// assert_eq!(map.vacant_index(), 0);
-    /// ```
-    pub fn vacant_index(&self) -> usize {
-        self.slab.vacant_key()
+        Self::with_capacity_and_hasher(n, Default::default())
     }
 }
 
 impl<K, V, S> HashSlabMap<K, V, S> {
-    /// Create a new map with `hash_builder` and capacity for `n` entries.
+    /// Creates an empty `HashSlabMap` with the specified capacity, using `hash_builder`
+    /// to hash the keys.
+    ///
+    /// The hash map will be able to hold at least `capacity` elements without
+    /// reallocating. If `capacity` is 0, the hash map will not allocate.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hashslab::HashSlabMap;
+    /// use std::hash::RandomState;
+    ///
+    /// let s = RandomState::new();
+    /// let mut map = HashSlabMap::with_capacity_and_hasher(10, s);
+    /// assert_eq!(map.len(), 0);
+    /// assert!(map.capacity() >= 10);
+    ///
+    /// map.insert(1, 2);
+    /// ```
     #[inline]
     pub fn with_capacity_and_hasher(n: usize, builder: S) -> Self {
         Self {
@@ -107,8 +200,12 @@ impl<K, V, S> HashSlabMap<K, V, S> {
     ///
     /// map.insert(1, 2);
     /// ```
-    pub fn with_hasher(hash_builder: S) -> Self {
-        Self::with_capacity_and_hasher(0, hash_builder)
+    pub const fn with_hasher(builder: S) -> Self {
+        Self {
+            table: HashTable::new(),
+            slab: Slab::new(),
+            builder,
+        }
     }
 
     /// Return the number of values the hashslab can store without reallocating.
@@ -150,7 +247,11 @@ impl<K, V, S> HashSlabMap<K, V, S> {
     /// Return the number of key-value pairs in the map.
     #[inline]
     pub fn len(&self) -> usize {
-        debug_assert_eq!(self.table.len(), self.slab.len());
+        debug_assert_eq!(
+            self.table.len(),
+            self.slab.len(),
+            "Number of entries in HashTable and Slab should be equal"
+        );
         self.table.len()
     }
 
@@ -183,17 +284,17 @@ impl<K, V, S> HashSlabMap<K, V, S> {
         IterMut::new(self.iter_full_mut())
     }
 
-    /// Return an owning iterator over the index-key-value triples. The iterator element type is [`(usize, K, V)`].
+    /// Return an owning iterator over the index-key-value triples. The iterator element type is `(usize, K, V)`.
     pub fn into_full_iter(self) -> IntoFullIter<K, V> {
         IntoFullIter::new(self.table.into_iter(), self.slab)
     }
 
-    /// An iterator visiting index-key pairs in arbitrary order. The iterator element type is [`(usize, &'a K)`].
+    /// An iterator visiting index-key pairs in arbitrary order. The iterator element type is `(usize, &'a K)`.
     pub fn full_keys(&self) -> FullKeys<'_, K> {
         FullKeys::new(self.table.iter())
     }
 
-    /// An iterator visiting all keys in arbitrary order. The iterator element type is [`&'a K`].
+    /// An iterator visiting all keys in arbitrary order. The iterator element type is `&'a K`.
     pub fn keys(&self) -> Keys<'_, K> {
         Keys::new(self.full_keys())
     }
@@ -203,7 +304,7 @@ impl<K, V, S> HashSlabMap<K, V, S> {
         IntoKeys::new(self.table.into_iter())
     }
 
-    /// An iterator over indices in arbitrary order. The iterator element type is [`usize`].
+    /// An iterator over indices in arbitrary order. The iterator element type is `usize`.
     pub fn indices(&self) -> Indices<'_, K> {
         Indices::new(self.table.iter())
     }
@@ -312,6 +413,88 @@ impl<K, V, S> HashSlabMap<K, V, S> {
     /// Clears the map, returning all key-value pairs as an iterator. Keeps the allocated memory for reuse.
     pub fn drain(&mut self) -> Drain<'_, K, V> {
         Drain::new(self.drain_full())
+    }
+
+    /// Retains only the elements specified by the predicate. Keeps the
+    /// allocated memory for reuse.
+    ///
+    /// In other words, remove all pairs `(k, v)` such that `f(&k, &mut v)` returns `false`.
+    /// The elements are visited in unsorted (and unspecified) order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    /// let mut map: HashSlabMap<i32, i32> = (0..8).map(|x|(x, x*10)).collect();
+    /// assert_eq!(map.len(), 8);
+    ///
+    /// map.retain(|&k, _| dbg!(k) % 2 == 0);
+    ///
+    /// // We can see, that the number of elements inside map is changed.
+    /// assert_eq!(map.len(), 4);
+    ///
+    /// let mut vec: Vec<(i32, i32)> = map.iter().map(|(&k, &v)| (k, v)).collect();
+    /// vec.sort_unstable();
+    /// assert_eq!(vec, [(0, 0), (2, 20), (4, 40), (6, 60)]);
+    /// ```
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&K, &mut V) -> bool,
+    {
+        self.table.retain(|KeyData { key, index }| {
+            let value = &mut self.slab[*index].value;
+            if f(key, value) {
+                true
+            } else {
+                self.slab.remove(*index);
+                false
+            }
+        })
+    }
+
+    /// Get a key-value pair by index
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    /// let mut map = HashSlabMap::new();
+    /// map.insert(1, "a");
+    /// assert_eq!(map.get_index(0), Some((&1, &"a")));
+    /// assert_eq!(map.get_index(1), None);
+    /// ```
+    pub fn get_index(&self, index: usize) -> Option<(&K, &V)> {
+        let ValueData { value, hash } = self.slab.get(index)?;
+        self.table
+            .find(*hash, |e| e.index == index)
+            .map(|KeyData { key, .. }| (key, value))
+    }
+
+    /// Get a value by index.
+    pub fn get_index_value(&self, index: usize) -> Option<&V> {
+        self.slab.get(index).map(|ValueData { value, .. }| value)
+    }
+
+    /// Returns the index of the next vacant entry.
+    ///
+    /// This function returns the index of the vacant entry which  will be used
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::*;
+    /// let mut map = HashSlabMap::new();
+    /// assert_eq!(map.vacant_index(), 0);
+    ///
+    /// map.insert(0, ());
+    /// assert_eq!(map.vacant_index(), 1);
+    ///
+    /// map.insert(1, ());
+    /// map.remove(&0);
+    /// assert_eq!(map.vacant_index(), 0);
+    /// ```
+    pub fn vacant_index(&self) -> usize {
+        self.slab.vacant_key()
     }
 }
 
@@ -428,19 +611,6 @@ where
         Q: Hash + Equivalent<K> + ?Sized,
     {
         self.get_full(key).map(|(_, _, data)| data)
-    }
-
-    /// Get a key-value pair by index
-    pub fn get_index(&self, index: usize) -> Option<(&K, &V)> {
-        let ValueData { value, hash } = self.slab.get(index)?;
-        self.table
-            .find(*hash, |e| e.index == index)
-            .map(|KeyData { key, .. }| (key, value))
-    }
-
-    /// Get a value by index.
-    pub fn get_index_value(&self, index: usize) -> Option<&V> {
-        self.slab.get(index).map(|ValueData { value, .. }| value)
     }
 
     /// Return item index, if it exists in the map
@@ -639,6 +809,38 @@ where
     /// ```
     pub fn contains_index(&self, index: usize) -> bool {
         self.slab.contains(index)
+    }
+
+    /// Moves all key-value pairs from `other` into `self`, leaving `other` empty.
+    ///
+    /// This is equivalent to calling [`insert`][Self::insert] for each
+    /// key-value pair from `other` in order, which means that for keys that
+    /// already exist in `self`, their value is updated in the current position.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    /// // Note: Key (3) is present in both maps.
+    /// let mut a = HashSlabMap::from([(3, "c"), (2, "b"), (1, "a")]);
+    /// let mut b = HashSlabMap::from([(3, "d"), (4, "e"), (5, "f")]);
+    /// let old_capacity = b.capacity();
+    ///
+    /// a.append(&mut b);
+    ///
+    /// assert_eq!(a.len(), 5);
+    /// assert_eq!(b.len(), 0);
+    /// assert_eq!(b.capacity(), old_capacity);
+    ///
+    /// let mut keys: Vec<_> = a.keys().cloned().collect();
+    /// keys.sort();
+    /// assert_eq!(keys, vec![1, 2, 3, 4, 5]);
+    ///
+    /// // "c" was overwritten.
+    /// assert_eq!(a[&3], "d");
+    /// ```
+    pub fn append<S2>(&mut self, other: &mut HashSlabMap<K, V, S2>) {
+        self.extend(other.drain());
     }
 }
 
@@ -994,7 +1196,7 @@ where
     fn from_iter<I: IntoIterator<Item = (K, V)>>(iterable: I) -> Self {
         let iter = iterable.into_iter();
         let (low, _) = iter.size_hint();
-        let mut map = Self::with_capacity_and_hasher(low, <_>::default());
+        let mut map = Self::with_capacity_and_hasher(low, S::default());
         map.extend(iter);
         map
     }
