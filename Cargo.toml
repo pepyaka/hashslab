@@ -1,6 +1,6 @@
 [package]
 name = "hashslab"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 documentation = "https://docs.rs/hashslab/"
 repository = "https://github.com/pepyaka/hashslab"
@@ -54,7 +54,17 @@ serde_derive = "1.0"
 indexmap = "2.6.0"
 criterion = { version = "0.5" }
 iai-callgrind = "0.14"
+axum = "0.8.1"
+tokio = { version = "1.43.0", features = ["full"] }
+serde = "1.0.217"
 
 [features]
 default = ["std"]
 std = []
+
+[[example]]
+name = "rest_api"
+doc-scrape-examples = true
+
+[package.metadata.docs.rs]
+cargo-args = ["-Zunstable-options", "-Zrustdoc-scrape-examples"]
