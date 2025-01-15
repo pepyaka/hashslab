@@ -145,13 +145,34 @@ pub struct HashSlabMap<K, V, S> {
 #[cfg(feature = "std")]
 #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl<K, V> HashSlabMap<K, V> {
-    /// Create a new map. (Does not allocate.)
+    /// Creates an empty `HashSlabMap`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    /// let mut map: HashSlabMap<&str, i32> = HashSlabMap::new();
+    /// assert_eq!(map.len(), 0);
+    /// assert_eq!(map.capacity(), 0);
+    /// ```
     #[inline]
     pub fn new() -> Self {
         Self::with_capacity(0)
     }
 
-    /// Create a new map with capacity for `n` entries. (Does not allocate if `n` is zero.)
+    /// Creates an empty `HashSlabMap` with the specified capacity.
+    ///
+    /// The hash map will be able to hold at least `capacity` elements without
+    /// reallocating. If `capacity` is 0, the hash map will not allocate.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    /// let mut map: HashSlabMap<&str, i32> = HashSlabMap::with_capacity(10);
+    /// assert_eq!(map.len(), 0);
+    /// assert!(map.capacity() >= 10);
+    /// ```
     #[inline]
     pub fn with_capacity(n: usize) -> Self {
         Self::with_capacity_and_hasher(n, Default::default())
@@ -168,7 +189,7 @@ impl<K, V, S> HashSlabMap<K, V, S> {
     /// # Examples
     ///
     /// ```
-    /// use hashslab::HashSlabMap;
+    /// # use hashslab::HashSlabMap;
     /// use std::hash::RandomState;
     ///
     /// let s = RandomState::new();
@@ -261,22 +282,138 @@ impl<K, V, S> HashSlabMap<K, V, S> {
         self.len() == 0
     }
 
-    /// An iterator over the index-key-value triples in arbitrary order.
+    /// An iterator over the index-key-value triples in arbitrary order.  
+    /// The iterator element type is `(usize, &'a K, &'a V)`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    ///
+    /// let mut map = HashSlabMap::new();
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    /// assert_eq!(map.len(), 3);
+    /// let mut vec: Vec<(usize, &str, i32)> = Vec::new();
+    ///
+    /// for (idx, key, val) in map.iter_full() {
+    ///     println!("idx: {idx}, key: {key} val: {val}");
+    ///     vec.push((idx, *key, *val));
+    /// }
+    ///
+    /// // The `IterFull` iterator produces items in arbitrary order, so the
+    /// // items must be sorted to test them against a sorted array.
+    /// vec.sort_unstable();
+    /// assert_eq!(vec, [(0, "a", 1), (1, "b", 2), (2, "c", 3)]);
+    ///
+    /// assert_eq!(map.len(), 3);
+    /// ```
     pub fn iter_full(&self) -> IterFull<'_, K, V> {
         IterFull::new(self.table.iter(), &self.slab)
     }
 
-    /// An iterator visiting all key-value pairs in arbitrary order.
+    /// An iterator visiting all key-value pairs in arbitrary order.  
+    /// The iterator element type is `(&'a K, &'a V)`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    ///
+    /// let mut map = HashSlabMap::new();
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    /// assert_eq!(map.len(), 3);
+    /// let mut vec: Vec<(&str, i32)> = Vec::new();
+    ///
+    /// for (key, val) in map.iter() {
+    ///     println!("key: {} val: {}", key, val);
+    ///     vec.push((*key, *val));
+    /// }
+    ///
+    /// // The `Iter` iterator produces items in arbitrary order, so the
+    /// // items must be sorted to test them against a sorted array.
+    /// vec.sort_unstable();
+    /// assert_eq!(vec, [("a", 1), ("b", 2), ("c", 3)]);
+    ///
+    /// assert_eq!(map.len(), 3);
+    /// ```
     pub fn iter(&self) -> Iter<'_, K, V> {
         Iter::new(self.iter_full())
     }
 
-    /// An iterator visiting all index-key-value triple in arbitrary order, with mutable references to the values.
+    /// An iterator visiting all index-key-value triple in arbitrary order,
+    /// with mutable references to the values.  
+    /// The iterator element type is `(usize, &'a K, &'a mut V)`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    ///
+    /// let mut map = HashSlabMap::new();
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    ///
+    /// assert_eq!(map.len(), 3);
+    /// 
+    /// let mut vec: Vec<(usize, &str, i32)> = Vec::new();
+    ///
+    /// for (idx, key, val) in map.iter_full_mut() {
+    ///     assert_eq!(idx + 1, *val as usize);
+    ///     // Update value
+    ///     *val *= 2;
+    ///     println!("idx: {idx}, key: {key} val: {val}");
+    ///     vec.push((idx, *key, *val));
+    /// }
+    ///
+    /// // The `IterFullMut` iterator produces items in arbitrary order, so the
+    /// // items must be sorted to test them against a sorted array.
+    /// vec.sort_unstable();
+    /// assert_eq!(vec, [(0, "a", 2), (1, "b", 4), (2, "c", 6)]);
+    ///
+    /// assert_eq!(map.len(), 3);
+    /// ```
     pub fn iter_full_mut(&mut self) -> IterFullMut<'_, K, V> {
         IterFullMut::new(self.table.iter(), &mut self.slab)
     }
 
-    /// An iterator visiting all key-value pairs in arbitrary order, with mutable references to the values.
+    /// An iterator visiting all key-value pairs in arbitrary order, with mutable references to the values.  
+    /// The iterator element type is `(&'a K, &'a mut V)`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    ///
+    /// let mut map = HashSlabMap::new();
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    ///
+    /// // Update all values
+    /// for (_, val) in map.iter_mut() {
+    ///     *val *= 2;
+    /// }
+    ///
+    /// assert_eq!(map.len(), 3);
+    /// let mut vec: Vec<(&str, i32)> = Vec::new();
+    ///
+    /// for (key, val) in &map {
+    ///     println!("key: {} val: {}", key, val);
+    ///     vec.push((*key, *val));
+    /// }
+    ///
+    /// // The `Iter` iterator produces items in arbitrary order, so the
+    /// // items must be sorted to test them against a sorted array.
+    /// vec.sort_unstable();
+    /// assert_eq!(vec, [("a", 2), ("b", 4), ("c", 6)]);
+    ///
+    /// assert_eq!(map.len(), 3);
+    /// ```
     pub fn iter_mut(&mut self) -> IterMut<'_, K, V>
     where
         K: Clone,
@@ -284,22 +421,112 @@ impl<K, V, S> HashSlabMap<K, V, S> {
         IterMut::new(self.iter_full_mut())
     }
 
-    /// Return an owning iterator over the index-key-value triples. The iterator element type is `(usize, K, V)`.
+    /// Creates a consuming iterator, that is, one that moves each index-key-value
+    /// pair out of the map in arbitrary order. The map cannot be used after
+    /// calling this.  
+    /// The iterator element type is `(usize, K, V)`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    ///
+    /// let map: HashSlabMap<_, _> = [("a", 1), ("b", 2), ("c", 3)].into();
+    ///
+    /// // Not possible with .iter_full()
+    /// let mut vec: Vec<(usize, &str, i32)> = map.into_full_iter().collect();
+    /// // The `IntoFullIter` iterator produces items in arbitrary order, so
+    /// // the items must be sorted to test them against a sorted array.
+    /// vec.sort_unstable();
+    /// assert_eq!(vec, [(0, "a", 1), (1, "b", 2), (2, "c", 3)]);
+    /// ```
     pub fn into_full_iter(self) -> IntoFullIter<K, V> {
         IntoFullIter::new(self.table.into_iter(), self.slab)
     }
 
-    /// An iterator visiting index-key pairs in arbitrary order. The iterator element type is `(usize, &'a K)`.
+    /// An iterator visiting index-keys pairs in arbitrary order.  
+    /// The iterator element type is `&'a K`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    ///
+    /// let mut map = HashSlabMap::new();
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    /// assert_eq!(map.len(), 3);
+    /// let mut vec: Vec<(usize, &str)> = Vec::new();
+    ///
+    /// for (idx, key) in map.full_keys() {
+    ///     println!("idx: {idx}, key: {key}");
+    ///     vec.push((idx, *key));
+    /// }
+    ///
+    /// // The `Keys` iterator produces keys in arbitrary order, so the
+    /// // keys must be sorted to test them against a sorted array.
+    /// vec.sort_unstable();
+    /// assert_eq!(vec, [(0, "a"), (1, "b"), (2, "c")]);
+    ///
+    /// assert_eq!(map.len(), 3);
+    /// ```
     pub fn full_keys(&self) -> FullKeys<'_, K> {
         FullKeys::new(self.table.iter())
     }
 
-    /// An iterator visiting all keys in arbitrary order. The iterator element type is `&'a K`.
+    /// An iterator visiting all keys in arbitrary order.  
+    /// The iterator element type is `&'a K`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    ///
+    /// let mut map = HashSlabMap::new();
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    /// assert_eq!(map.len(), 3);
+    /// let mut vec: Vec<&str> = Vec::new();
+    ///
+    /// for key in map.keys() {
+    ///     println!("{}", key);
+    ///     vec.push(*key);
+    /// }
+    ///
+    /// // The `Keys` iterator produces keys in arbitrary order, so the
+    /// // keys must be sorted to test them against a sorted array.
+    /// vec.sort_unstable();
+    /// assert_eq!(vec, ["a", "b", "c"]);
+    ///
+    /// assert_eq!(map.len(), 3);
+    /// ```
     pub fn keys(&self) -> Keys<'_, K> {
         Keys::new(self.full_keys())
     }
 
-    /// Return an owning iterator over the keys of the map, in their order
+    /// Creates a consuming iterator visiting all the keys in arbitrary order.
+    /// The map cannot be used after calling this.
+    /// The iterator element type is `K`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hashslab::HashSlabMap;
+    ///
+    /// let mut map = HashSlabMap::new();
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    ///
+    /// let mut vec: Vec<&str> = map.into_keys().collect();
+    ///
+    /// // The `IntoKeys` iterator produces keys in arbitrary order, so the
+    /// // keys must be sorted to test them against a sorted array.
+    /// vec.sort_unstable();
+    /// assert_eq!(vec, ["a", "b", "c"]);
+    /// ```
     pub fn into_keys(self) -> IntoKeys<K> {
         IntoKeys::new(self.table.into_iter())
     }
